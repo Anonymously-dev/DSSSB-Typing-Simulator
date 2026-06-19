@@ -122,6 +122,11 @@ function Invoke-StagedTypingSound {
 
 $form_FormClosing = {
     try {
+        # 1. Kill the background timers to prevent memory leaks
+        if ($null -ne $LiveTimer) { $LiveTimer.Stop(); $LiveTimer.Dispose() }
+        if ($null -ne $script:TypingStopTimer) { $script:TypingStopTimer.Stop(); $script:TypingStopTimer.Dispose() }
+        
+        # 2. Cleanup Audio and Temp Files
         if ($script:NoisePlayer) { $script:NoisePlayer.controls.stop() }
         if (Test-Path $script:TempAudioPath) { Remove-Item $script:TempAudioPath -Force }
         if (Test-Path $script:InternalTypingWavPath) { Remove-Item $script:InternalTypingWavPath -Force }
@@ -251,21 +256,35 @@ function Run-ComparisonEngine {
             
             $m = $bestAnchorIndex + 1
             $t++
-        } else {
-            if ($m -lt $masterMatches.Count) {
-                if (($t + 1 -lt $typedMatches.Count) -and ($masterMatches[$m].Value -ceq $typedMatches[$t + 1].Value)) {
-                    $errLen = $typedMatches[$t].Length
+         } else {
+            # >>> FINAL LOGIC PATCH: Multi-Word Insertion Scanner <<<
+            $insertionFound = -1
+            
+            # Scan up to 5 words ahead in the typed text to see if they just inserted a bunch of extra junk words
+            for ($lookT = 1; $lookT -le 5; $lookT++) {
+                if (($t + $lookT -lt $typedMatches.Count) -and ($m -lt $masterMatches.Count) -and ($masterMatches[$m].Value -ceq $typedMatches[$t + $lookT].Value)) {
+                    $insertionFound = $lookT
+                    break
+                }
+            }
+
+            if ($insertionFound -ne -1) {
+                # Log EVERY extra word leading up to the resync anchor
+                for ($extra = 0; $extra -lt $insertionFound; $extra++) {
+                    $errLen = $typedMatches[$t + $extra].Length
                     [void]$errorList.Add([PSCustomObject]@{ 
                         Type = "Insertion"
-                        Text = "Extra Word: '$($typedMatches[$t].Value)'"
+                        Text = "Extra Word: '$($typedMatches[$t + $extra].Value)'"
                         StrokePen = 5
                         WordPen = 1
-                        Index = $typedMatches[$t].Index
+                        Index = $typedMatches[$t + $extra].Index
                         Length = $errLen 
                     })
-                    $m++
-                    $t += 2
-                } else {
+                }
+                $t += $insertionFound
+            } else {
+                # Standard Mismatch Fallback
+                if ($m -lt $masterMatches.Count) {
                     $errLen = $typedMatches[$t].Length
                     [void]$errorList.Add([PSCustomObject]@{ 
                         Type = "Mismatch"
@@ -277,18 +296,19 @@ function Run-ComparisonEngine {
                     })
                     $m++
                     $t++
+                } else {
+                    # User typed words past the end of the master document
+                    $errLen = $typedMatches[$t].Length
+                    [void]$errorList.Add([PSCustomObject]@{ 
+                        Type = "Insertion"
+                        Text = "Extra Word: '$($typedMatches[$t].Value)'"
+                        StrokePen = 5
+                        WordPen = 1
+                        Index = $typedMatches[$t].Index
+                        Length = $errLen 
+                    })
+                    $t++
                 }
-            } else {
-                $errLen = $typedMatches[$t].Length
-                [void]$errorList.Add([PSCustomObject]@{ 
-                    Type = "Insertion"
-                    Text = "Extra Word: '$($typedMatches[$t].Value)'"
-                    StrokePen = 5
-                    WordPen = 1
-                    Index = $typedMatches[$t].Index
-                    Length = $errLen 
-                })
-                $t++
             }
         }
     }
@@ -307,7 +327,6 @@ function Run-ComparisonEngine {
 
     return @($errorList.ToArray())
 }
-
 # Core Parser 2: Lexical Spellcheck & Grammar Engine
 function Run-StandaloneEngine {
     param([string]$TextData)
@@ -394,12 +413,15 @@ function Run-StandaloneEngine {
         }
 
         try {
-            if ($null -ne $globalDocObj) { $globalDocObj.Close([ref]0) }
-            $globalWordObj.Quit()
-        } catch {}
-        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalWordObj)
-        [GC]::Collect()
-        [GC]::WaitForPendingFinalizers()
+			if ($null -ne $globalDocObj) { 
+				$globalDocObj.Close([ref]0) 
+				[System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalDocObj) | Out-Null
+			}
+			$globalWordObj.Quit()
+		} catch {}
+		[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalWordObj)
+		[GC]::Collect()
+		[GC]::WaitForPendingFinalizers()
 
     } else {
         try {
@@ -1028,7 +1050,11 @@ $btnCopyMaster.Add_Paint({
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#005FB8"), $flags)
 })
 $btnCopyMaster.Add_Click({
-    if (![string]::IsNullOrWhiteSpace($txtMaster.Text)) { [System.Windows.Forms.Clipboard]::SetText($txtMaster.Text) }
+    try {
+        if (![string]::IsNullOrWhiteSpace($txtMaster.Text)) { 
+            [System.Windows.Forms.Clipboard]::SetText($txtMaster.Text) 
+        }
+    } catch {}
 })
 $pnlMaster.Controls.Add($btnCopyMaster)
 
@@ -1053,7 +1079,13 @@ $btnPasteMaster.Add_Paint({
 })
 $btnPasteMaster.Add_Click({
     if ($txtMaster.ReadOnly) { return }
-    if ([System.Windows.Forms.Clipboard]::ContainsText()) { $txtMaster.Text = [System.Windows.Forms.Clipboard]::GetText() }
+    try {
+        if ([System.Windows.Forms.Clipboard]::ContainsText()) { 
+            $txtMaster.Text = [System.Windows.Forms.Clipboard]::GetText() 
+        }
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Clipboard is currently locked by another process. Please try again.", "Clipboard Error")
+    }
 })
 $pnlMaster.Controls.Add($btnPasteMaster)
 
@@ -1599,58 +1631,68 @@ $btnStartFreeHand.Add_Click({
 
 $btnCalc.Add_Click({
     if ($script:IsTestRunning) { return }
-    $duration = 10.0
-    if (![double]::TryParse($txtTime.Text, [ref]$duration) -or $duration -le 0) { $duration = 10.0 }
-    $typedText = ""
-    $boxText = $txtMaster.Text.Trim()
+    
+    # 1. Instantly disable the button so they can't double-click it
+    $btnCalc.Enabled = $false
+    
+    try {
+        $duration = 10.0
+        if (![double]::TryParse($txtTime.Text, [ref]$duration) -or $duration -le 0) { $duration = 10.0 }
+        $typedText = ""
+        $boxText = $txtMaster.Text.Trim()
 
-    if ($script:AppMode -eq "Dictionary") {
-        if (-not [string]::IsNullOrWhiteSpace($boxText)) {
-            $typedText = $boxText
+        if ($script:AppMode -eq "Dictionary") {
+            if (-not [string]::IsNullOrWhiteSpace($boxText)) {
+                $typedText = $boxText
+            } else {
+                if ([string]::IsNullOrWhiteSpace($txtPath.Text) -or -not (Test-Path $txtPath.Text)) {
+                    [System.Windows.Forms.MessageBox]::Show("Please select a Target File or paste text below.", "Validation")
+                    return
+                }
+                $rawText = Get-Content $txtPath.Text -Raw -Encoding UTF8
+                if ($null -ne $rawText) { $typedText = $rawText -replace "`r`n", "`n" }
+            }
+            $txtOutput.Text = "`r`n  Initializing evaluation engine..."
+            [System.Windows.Forms.Application]::DoEvents()
+            
+            $script:LastScale = 2.0 
+            [array]$errorsArray = Run-StandaloneEngine -TextData $typedText
         } else {
             if ([string]::IsNullOrWhiteSpace($txtPath.Text) -or -not (Test-Path $txtPath.Text)) {
-                [System.Windows.Forms.MessageBox]::Show("Please select a Target File or paste text below.", "Validation")
+                [System.Windows.Forms.MessageBox]::Show("Please select a Master File for comparison.", "Validation")
+                return
+            }
+            if ([string]::IsNullOrWhiteSpace($boxText)) {
+                [System.Windows.Forms.MessageBox]::Show("Please paste your Typed Text into the box.", "Validation")
                 return
             }
             $rawText = Get-Content $txtPath.Text -Raw -Encoding UTF8
-            if ($null -ne $rawText) { $typedText = $rawText -replace "`r`n", "`n" }
+            $masterTextFile = if ($null -ne $rawText) { $rawText -replace "`r`n", "`n" } else { "" }
+            $typedText = $boxText
+            
+            $script:LastScale = 2.0
+            [array]$errorsArray = Run-ComparisonEngine -TypedText $typedText -MasterText $masterTextFile
         }
-        $txtOutput.Text = "`r`n  Initializing evaluation engine..."
-        [System.Windows.Forms.Application]::DoEvents()
+
+        # --- Execute Anti-Spam Check ---
+        $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
         
-        $script:LastScale = 2.0 
-        [array]$errorsArray = Run-StandaloneEngine -TextData $typedText
-    } else {
-        if ([string]::IsNullOrWhiteSpace($txtPath.Text) -or -not (Test-Path $txtPath.Text)) {
-            [System.Windows.Forms.MessageBox]::Show("Please select a Master File for comparison.", "Validation")
-            return
-        }
-        if ([string]::IsNullOrWhiteSpace($boxText)) {
-            [System.Windows.Forms.MessageBox]::Show("Please paste your Typed Text into the box.", "Validation")
-            return
-        }
-        $rawText = Get-Content $txtPath.Text -Raw -Encoding UTF8
-        $masterTextFile = if ($null -ne $rawText) { $rawText -replace "`r`n", "`n" } else { "" }
-        $typedText = $boxText
+        $script:LastGrossStrokes = $typedText.Length - $spamResult.SpamStrokes
+        if ($script:LastGrossStrokes -lt 0) { $script:LastGrossStrokes = 0 }
+        $script:LastGrossWords = $script:LastGrossStrokes / 5.0
+
+        $script:CurrentErrorObjects = $spamResult.FinalErrors
+        $script:IgnoredErrorIndices = @()
+        $script:LastDuration = $duration
+        $script:HasRun = $true
+
+        Invoke-RenderScoreboard
+        Invoke-HighlightTextBoxErrors
         
-        $script:LastScale = 2.0
-        [array]$errorsArray = Run-ComparisonEngine -TypedText $typedText -MasterText $masterTextFile
+    } finally {
+        # 2. Re-enable the button no matter what happens (even if it hits a 'return' above)
+        $btnCalc.Enabled = $true
     }
-
-    # --- Execute Anti-Spam Check ---
-    $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
-    
-    $script:LastGrossStrokes = $typedText.Length - $spamResult.SpamStrokes
-    if ($script:LastGrossStrokes -lt 0) { $script:LastGrossStrokes = 0 }
-    $script:LastGrossWords = $script:LastGrossStrokes / 5.0
-
-    $script:CurrentErrorObjects = $spamResult.FinalErrors
-    $script:IgnoredErrorIndices = @()
-    $script:LastDuration = $duration
-    $script:HasRun = $true
-
-    Invoke-RenderScoreboard
-    Invoke-HighlightTextBoxErrors
 })
 
 # Dynamic Window Size Event Handler
