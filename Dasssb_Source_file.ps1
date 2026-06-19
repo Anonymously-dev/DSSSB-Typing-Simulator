@@ -50,6 +50,7 @@ $script:balloonTip.AutoPopDelay = 6000
 
 # Paste your custom GTA IV background track here:
 $script:Base64Music = ""
+
 # Paste your short mechanical typing click WAV base64 data here:
 $script:Base64TypingSound = ""
 
@@ -228,16 +229,26 @@ function Run-ComparisonEngine {
         
         if ($bestAnchorIndex -ne -1) {
             $skippedWordsCount = $bestAnchorIndex - $m
+            
+            # Group all skipped words into a single array
+            $skippedArray = @()
             for ($i = 0; $i -lt $skippedWordsCount; $i++) {
-                [void]$errorList.Add([PSCustomObject]@{ 
-                    Type = "Omission"
-                    Text = "Omission: Skipped reference word '$($masterMatches[$m + $i].Value)'"
-                    StrokePen = 5
-                    WordPen = 1
-                    Index = -1
-                    Length = 0 
-                })
+                $skippedArray += $masterMatches[$m + $i].Value
             }
+            
+            # Join them into a readable phrase
+            $skippedPhrase = $skippedArray -join " "
+            
+            # Create ONE error object, showing the FULL text
+            [void]$errorList.Add([PSCustomObject]@{ 
+                Type = "Omission"
+                Text = "Omission: Skipped $skippedWordsCount word(s) -> '$skippedPhrase'"
+                StrokePen = (5 * $skippedWordsCount) 
+                WordPen = $skippedWordsCount         
+                Index = -1
+                Length = 0 
+            })
+            
             $m = $bestAnchorIndex + 1
             $t++
         } else {
@@ -1186,7 +1197,7 @@ $form.Controls.Add($pnlOutput)
 
 $txtOutput = New-Object System.Windows.Forms.RichTextBox
 $txtOutput.Multiline = $true
-$txtOutput.ScrollBars = "Vertical" 
+$txtOutput.ScrollBars = "Both" 
 $txtOutput.WordWrap = $false 
 $txtOutput.Dock = [System.Windows.Forms.DockStyle]::Fill
 $txtOutput.Font = New-Object System.Drawing.Font("Consolas", 10)
@@ -1456,12 +1467,15 @@ function Invoke-RenderScoreboard {
     
     for ($i = 0; $i -lt $script:CurrentErrorObjects.Count; $i++) {
         $errNum = $i + 1
+        $errObj = $script:CurrentErrorObjects[$i]
+        
         if ($script:IgnoredErrorIndices -contains $errNum) {
-            $renderedLogItems += "  - [IGNORED] [$errNum] $($script:CurrentErrorObjects[$i].Text)"
+            $renderedLogItems += "  - [IGNORED] [$errNum] $($errObj.Text)"
         } else {
-            $activeWordsPen += 1
-            $activeStrokesPen += 5
-            $renderedLogItems += "  - [$errNum] $($script:CurrentErrorObjects[$i].Text)"
+            # >>> FIX: Read the actual penalty values stored in the error object <<<
+            $activeWordsPen += $errObj.WordPen
+            $activeStrokesPen += $errObj.StrokePen
+            $renderedLogItems += "  - [$errNum] $($errObj.Text)"
         }
     }
 
