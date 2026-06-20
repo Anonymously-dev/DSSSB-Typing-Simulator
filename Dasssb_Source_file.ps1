@@ -20,6 +20,7 @@ $script:DictEngineType = "Native"
 
 $script:HasRun = $false
 $script:LastGrossStrokes = 0
+$script:LastRawTextLength = 0
 $script:LastNetStrokes = 0
 $script:LastErrorStrokes = 0
 $script:LastGrossWords = 0
@@ -186,7 +187,7 @@ function Run-ComparisonEngine {
     
     $m = 0
     $t = 0
-    $maxLookahead = 40
+    $maxLookahead = 60 # Expanded to catch full repeated lines
 
     while ($t -lt $typedMatches.Count) {
         [System.Windows.Forms.Application]::DoEvents()
@@ -195,6 +196,40 @@ function Run-ComparisonEngine {
         if ($m -lt $masterMatches.Count -and $masterMatches[$m].Value -ceq $typedMatches[$t].Value) {
             $m++
             $t++
+            continue
+        }
+        
+        # --- Catch Merged Words (Missing Space, e.g., "environment,telecom") ---
+        if ($m + 1 -lt $masterMatches.Count -and ($masterMatches[$m].Value + $masterMatches[$m+1].Value) -eq $typedMatches[$t].Value) {
+            $errLen = $typedMatches[$t].Length
+            [void]$errorList.Add([PSCustomObject]@{ 
+                Type = "MergedWord"
+                Text = "Merged Words (Missing Space): '$($typedMatches[$t].Value)'"
+                StrokePen = 10
+                WordPen = 2
+                DisplayErrorCount = 10
+                Index = $typedMatches[$t].Index
+                Length = $errLen 
+            })
+            $m += 2
+            $t += 1
+            continue
+        }
+
+        # --- Catch Split Words (Extra Space typed mid-word) ---
+        if ($t + 1 -lt $typedMatches.Count -and $m -lt $masterMatches.Count -and $masterMatches[$m].Value -eq ($typedMatches[$t].Value + $typedMatches[$t+1].Value)) {
+            $errLen = ($typedMatches[$t+1].Index + $typedMatches[$t+1].Length) - $typedMatches[$t].Index
+            [void]$errorList.Add([PSCustomObject]@{ 
+                Type = "SplitWord"
+                Text = "Split Word (Extra Space): '$($typedMatches[$t].Value) $($typedMatches[$t+1].Value)'"
+                StrokePen = 10
+                WordPen = 2
+                DisplayErrorCount = 10
+                Index = $typedMatches[$t].Index
+                Length = $errLen 
+            })
+            $m += 1
+            $t += 2
             continue
         }
         
@@ -215,103 +250,144 @@ function Run-ComparisonEngine {
             continue
         }
 
-        # Lookahead to detect omitted words
-        $bestAnchorIndex = -1
-        $lowestOmissionPenalty = $maxLookahead
-        
-        for ($look = 1; $look -le $maxLookahead; $look++) {
-            $mCheck = $m + $look
-            if ($mCheck -lt $masterMatches.Count) {
-                if ($masterMatches[$mCheck].Value -ceq $typedMatches[$t].Value) {
-                    $confidence = 1
-                    if (($mCheck + 1 -lt $masterMatches.Count) -and ($t + 1 -lt $typedMatches.Count) -and ($masterMatches[$mCheck + 1].Value -ceq $typedMatches[$t + 1].Value)) { $confidence++ }
-                    if (($mCheck + 2 -lt $masterMatches.Count) -and ($t + 2 -lt $typedMatches.Count) -and ($masterMatches[$mCheck + 2].Value -ceq $typedMatches[$t + 2].Value)) { $confidence++ }
-                    
-                    if ($confidence -ge 2 -or ($confidence -eq 1 -and $look -le 2 -and $look -lt $lowestOmissionPenalty)) {
-                        $lowestOmissionPenalty = $look
-                        $bestAnchorIndex = $mCheck
-                        if ($confidence -ge 2) { break }
+        # --- SMART 2D SYNC WINDOW ---
+        $bestM = -1
+        $bestT = -1
+        $minDistance = 999999
+
+        for ($lookM = 0; $lookM -le $maxLookahead; $lookM++) {
+            for ($lookT = 0; $lookT -le $maxLookahead; $lookT++) {
+                if ($lookM -eq 0 -and $lookT -eq 0) { continue }
+                
+                $checkM = $m + $lookM
+                $checkT = $t + $lookT
+
+                if ($checkM -lt $masterMatches.Count -and $checkT -lt $typedMatches.Count) {
+                    if ($masterMatches[$checkM].Value -ceq $typedMatches[$checkT].Value) {
+                        
+                        $confidence = 1
+                        $maxPossible = 1
+                        
+                        if (($checkM + 1 -lt $masterMatches.Count) -and ($checkT + 1 -lt $typedMatches.Count)) {
+                            $maxPossible = 2
+                            if ($masterMatches[$checkM + 1].Value -ceq $typedMatches[$checkT + 1].Value) { $confidence++ }
+                        }
+                        if (($checkM + 2 -lt $masterMatches.Count) -and ($checkT + 2 -lt $typedMatches.Count)) {
+                            $maxPossible = 3
+                            if ($masterMatches[$checkM + 2].Value -ceq $typedMatches[$checkT + 2].Value) { $confidence++ }
+                        }
+
+                        $requiredConfidence = 1
+                        if ($lookM + $lookT -ge 4) { $requiredConfidence = 2 }
+                        if ($lookM + $lookT -ge 10) { $requiredConfidence = 3 }
+                        
+                        if ($requiredConfidence -gt $maxPossible) { $requiredConfidence = $maxPossible }
+
+                        if ($confidence -ge $requiredConfidence) {
+                            $dist = $lookM + $lookT
+                            if ($dist -lt $minDistance) {
+                                $minDistance = $dist
+                                $bestM = $checkM
+                                $bestT = $checkT
+                            }
+                        }
                     }
                 }
             }
         }
         
-        # Log omitted words
-        if ($bestAnchorIndex -ne -1) {
-            $skippedWordsCount = $bestAnchorIndex - $m
-            $skippedArray = @()
-            for ($i = 0; $i -lt $skippedWordsCount; $i++) { $skippedArray += $masterMatches[$m + $i].Value }
-            $skippedPhrase = $skippedArray -join " "
+        if ($bestM -ne -1 -and $bestT -ne -1) {
             
-            [void]$errorList.Add([PSCustomObject]@{ 
-                Type = "Omission"
-                Text = "Omission: Skipped $skippedWordsCount word(s) -> '$skippedPhrase'"
-                StrokePen = (5 * $skippedWordsCount) 
-                WordPen = $skippedWordsCount         
-                DisplayErrorCount = (5 * $skippedWordsCount)
-                Index = -1
-                Length = 0 
-            })
-            $m = $bestAnchorIndex + 1
-            $t++
-         } else {
-            # Lookahead to detect extra inserted words
-            $insertionFound = -1
-            for ($lookT = 1; $lookT -le 5; $lookT++) {
-                if (($t + $lookT -lt $typedMatches.Count) -and ($m -lt $masterMatches.Count) -and ($masterMatches[$m].Value -ceq $typedMatches[$t + $lookT].Value)) {
-                    $insertionFound = $lookT
-                    break
+            if (($bestM - $m -eq 1) -and ($bestT - $t -eq 1)) {
+                $errLen = $typedMatches[$t].Length
+                [void]$errorList.Add([PSCustomObject]@{ 
+                    Type = "Mismatch"
+                    Text = "Typo/Case Error: '$($typedMatches[$t].Value)' (Expected: '$($masterMatches[$m].Value)')"
+                    StrokePen = 5
+                    WordPen = 1
+                    DisplayErrorCount = 5
+                    Index = $typedMatches[$t].Index
+                    Length = $errLen 
+                })
+            } else {
+                # Handle skipped words (Omissions)
+                if ($bestM -gt $m) {
+                    $skippedWordsCount = $bestM - $m
+                    $skippedArray = @()
+                    for ($i = 0; $i -lt $skippedWordsCount; $i++) { $skippedArray += $masterMatches[$m + $i].Value }
+                    $skippedPhrase = $skippedArray -join " "
+                    
+                    # Calculate exact position in typed text to anchor the blue marker
+                    $omissionIdx = if ($t -lt $typedMatches.Count) { $typedMatches[$t].Index } else { [math]::Max(0, $TypedText.Length - 1) }
+                    $omissionLen = if ($TypedText.Length -gt 0) { 1 } else { 0 }
+                    
+                    [void]$errorList.Add([PSCustomObject]@{ 
+                        Type = "Omission"
+                        Text = "Omission: Skipped $skippedWordsCount word(s) -> '$skippedPhrase'"
+                        StrokePen = (5 * $skippedWordsCount) 
+                        WordPen = $skippedWordsCount         
+                        DisplayErrorCount = (5 * $skippedWordsCount)
+                        Index = $omissionIdx
+                        Length = $omissionLen 
+                    })
+                }
+                
+                # Handle extra typed words (Repeated lines / Insertions GROUPED)
+                if ($bestT -gt $t) {
+                    $extraWordsCount = $bestT - $t
+                    $extraArray = @()
+                    for ($extra = 0; $extra -lt $extraWordsCount; $extra++) {
+                        $extraArray += $typedMatches[$t + $extra].Value
+                    }
+                    $extraPhrase = $extraArray -join " "
+                    
+                    $startIdx = $typedMatches[$t].Index
+                    $endIdx = $typedMatches[$bestT - 1].Index + $typedMatches[$bestT - 1].Length
+                    $totalLen = $endIdx - $startIdx
+                    
+                    [void]$errorList.Add([PSCustomObject]@{ 
+                        Type = "Insertion"
+                        Text = "Extra Words (Repeated or incorrect line): Added $extraWordsCount word(s) -> '$extraPhrase'"
+                        StrokePen = (5 * $extraWordsCount)
+                        WordPen = $extraWordsCount
+                        DisplayErrorCount = (5 * $extraWordsCount)
+                        Index = $startIdx
+                        Length = $totalLen 
+                    })
                 }
             }
-
-            # Log inserted words
-            if ($insertionFound -ne -1) {
-                for ($extra = 0; $extra -lt $insertionFound; $extra++) {
-                    $errLen = $typedMatches[$t + $extra].Length
-                    [void]$errorList.Add([PSCustomObject]@{ 
-                        Type = "Insertion"
-                        Text = "Extra Word: '$($typedMatches[$t + $extra].Value)'"
-                        StrokePen = 5
-                        WordPen = 1
-                        DisplayErrorCount = 5
-                        Index = $typedMatches[$t + $extra].Index
-                        Length = $errLen 
-                    })
-                }
-                $t += $insertionFound
+            $m = $bestM
+            $t = $bestT
+        } else {
+            if ($m -lt $masterMatches.Count) {
+                $errLen = $typedMatches[$t].Length
+                [void]$errorList.Add([PSCustomObject]@{ 
+                    Type = "Mismatch"
+                    Text = "Typo/Case Error: '$($typedMatches[$t].Value)' (Expected: '$($masterMatches[$m].Value)')"
+                    StrokePen = 5
+                    WordPen = 1
+                    DisplayErrorCount = 5
+                    Index = $typedMatches[$t].Index
+                    Length = $errLen 
+                })
+                $m++
+                $t++
             } else {
-                # Fallback: Just mark it as a general typo/mismatch
-                if ($m -lt $masterMatches.Count) {
-                    $errLen = $typedMatches[$t].Length
-                    [void]$errorList.Add([PSCustomObject]@{ 
-                        Type = "Mismatch"
-                        Text = "Typo/Case Error: '$($typedMatches[$t].Value)' (Expected: '$($masterMatches[$m].Value)')"
-                        StrokePen = 5
-                        WordPen = 1
-                        DisplayErrorCount = 5
-                        Index = $typedMatches[$t].Index
-                        Length = $errLen 
-                    })
-                    $m++
-                    $t++
-                } else {
-                    $errLen = $typedMatches[$t].Length
-                    [void]$errorList.Add([PSCustomObject]@{ 
-                        Type = "Insertion"
-                        Text = "Extra Word: '$($typedMatches[$t].Value)'"
-                        StrokePen = 5
-                        WordPen = 1
-                        DisplayErrorCount = 5
-                        Index = $typedMatches[$t].Index
-                        Length = $errLen 
-                    })
-                    $t++
-                }
+                $errLen = $typedMatches[$t].Length
+                [void]$errorList.Add([PSCustomObject]@{ 
+                    Type = "Insertion"
+                    Text = "Extra Word: '$($typedMatches[$t].Value)'"
+                    StrokePen = 5
+                    WordPen = 1
+                    DisplayErrorCount = 5
+                    Index = $typedMatches[$t].Index
+                    Length = $errLen 
+                })
+                $t++
             }
         }
     }
 
-    # Catch extra spacing errors
     foreach ($match in [regex]::Matches($TypedText, " {2,}")) { 
         $extraSpaceCount = ($match.Length - 1)
         [void]$errorList.Add([PSCustomObject]@{ 
@@ -354,7 +430,6 @@ function Run-StandaloneEngine {
             [System.Windows.Forms.Application]::DoEvents()
             $rawWord = $match.Value
             
-            # Skip emails and URLs
             if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) { continue }
             
             $word = $rawWord -replace "^[^a-zA-Z0-9]+", "" -replace "[^a-zA-Z0-9]+$", ""
@@ -362,7 +437,6 @@ function Run-StandaloneEngine {
             $cleanWord = $word.ToLower()
             if ($cleanWord.Length -eq 0) { continue }
 
-            # Flag lowercase "i"
             if ($word -ceq "i") {
                 [void]$errorList.Add([PSCustomObject]@{ 
                     Type = "Grammar"; Text = "Grammar Error: Lowercase 'i' used instead of 'I'"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
@@ -370,7 +444,6 @@ function Run-StandaloneEngine {
                 continue 
             }
 
-            # Check spelling
             if (-not $wordCache.ContainsKey($cleanWord)) {
                 try {
                     $isError = -not $globalWordObj.CheckSpelling($word)
@@ -392,7 +465,6 @@ function Run-StandaloneEngine {
             }
         }
         
-        # Cleanup MS Word Objects
         try {
 			if ($null -ne $globalDocObj) { $globalDocObj.Close([ref]0); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalDocObj) | Out-Null }
 			$globalWordObj.Quit()
@@ -411,7 +483,6 @@ function Run-StandaloneEngine {
                 [System.Windows.Threading.Dispatcher]::PushFrame($frame)
             }
             
-            # Autodetect system language for spellcheck
             $systemLang = [System.Globalization.CultureInfo]::CurrentCulture.IetfLanguageTag
             $testLangs = @($systemLang, "en-US", "en-IN", "en-GB", "en-AU", "en-CA") | Select-Object -Unique
             $activeLang = $null
@@ -473,7 +544,6 @@ function Run-StandaloneEngine {
         }
     }
 
-    # Catch general grammatical formatting errors (Spaces, Punctuation gaps, Capitalization)
     foreach ($match in [regex]::Matches($TextData, " {2,}")) { 
         [void]$errorList.Add([PSCustomObject]@{ 
             Type      = "Space"; Text = "Extra or incorrect spacing detected"; Index = $match.Index; Length = $match.Length; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5
@@ -517,7 +587,7 @@ function Run-StandaloneEngine {
             }
             foreach ($item in $itemsToRemove) { $errorList.Remove($item) }
             [void]$errorList.Add([PSCustomObject]@{ 
-                Type = "PunctuationGap"; Text = "Missing space after punctuation: '$fullWord'"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $startIdx; Length = $fullLength
+                Type = "PunctuationGap"; Text = "Missing space after punctuation: '$fullWord'"; StrokePen = 10; WordPen = 2; DisplayErrorCount = 10; Index = $startIdx; Length = $fullLength
             })
         }
     }
@@ -554,7 +624,7 @@ function Run-StandaloneEngine {
     return @($errorList.ToArray()) 
 }
 
-# Text Engine 3: Anti-Spam Filter (Identifies gibberish typing to prevent score cheating)
+# Text Engine 3: Anti-Spam Filter (Flags 20+ chars as spam but drops all Gibberish logic)
 function Invoke-AntiSpamFilter {
     param([string]$InputText, [array]$EngineErrors)
     
@@ -562,13 +632,22 @@ function Invoke-AntiSpamFilter {
     $spamList = New-Object System.Collections.ArrayList
     $filteredErrors = New-Object System.Collections.ArrayList
     
-    # Catch massive strings without spaces
-    $possibleSpamMatches = [regex]::Matches($InputText, "\S{19,}")
+    # Catch massive strings without spaces (20+ chars)
+    $possibleSpamMatches = [regex]::Matches($InputText, "\S{20,}")
     $actualSpamMatches = New-Object System.Collections.ArrayList
 
     foreach ($match in $possibleSpamMatches) {
-        if ($val -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$") { continue }
+        $val = $match.Value 
+        
+        # 1. Allow Emails and URLs
+        if ($val -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$" -or $val -match "^(www\.|https?://)") { continue }
+        
+        # 2. Allow long hyphenated words (e.g., long-term-environmental-impact)
         if ($val -match "-") { continue }
+        
+        # 3. Allow merged words caused by a missed space after punctuation (e.g., "environment,telecom")
+        if ($val -match "[a-zA-Z0-9][.,!?;:/][a-zA-Z0-9]") { continue }
+
         [void]$actualSpamMatches.Add($match)
     }
     
@@ -577,16 +656,16 @@ function Invoke-AntiSpamFilter {
         $preview = if ($match.Length -gt 15) { $match.Value.Substring(0,12) + "..." } else { $match.Value }
         [void]$spamList.Add([PSCustomObject]@{
             Type = "Spam"
-            Text = "Invalid Data (Ignored): Malicious key spam detected ('$preview')"
+            Text = "Maybe Spam: '$preview' (Excluded from Gross Words)"
             StrokePen = 0 
             WordPen = 0
-            DisplayErrorCount = $match.Length
+            DisplayErrorCount = 0
             Index = $match.Index
             Length = $match.Length
         })
     }
 
-    # Evaluate existing errors for gibberish characteristics
+    # Evaluate existing errors. Drop overlapping ones.
     foreach ($err in $EngineErrors) {
         $isOverlap = $false
         foreach ($match in $actualSpamMatches) {
@@ -595,57 +674,8 @@ function Invoke-AntiSpamFilter {
             }
         }
         if ($isOverlap) { continue }
-
-        if ($err.Type -eq "Typo" -or $err.Type -eq "Mismatch" -or $err.Type -eq "Insertion") {
-            $extractedWord = ""
-            if ($err.Text -match "'([^']+)'") { $extractedWord = $matches[1] }
-            
-            $lower = $extractedWord.ToLower()
-            $len = $lower.Length
-
-            if ($len -ge 4) {
-                $expectedWord = ""
-                if ($err.Text -match "\(Expected: '([^']+)'\)") { $expectedWord = $matches[1] }
-                
-                $vowels = [regex]::Matches($lower, "[aeiouy]").Count
-                $homeRow = [regex]::Matches($lower, "[asdfghjkl]").Count
-                $topRow  = [regex]::Matches($lower, "[qwertyuiop]").Count
-                $botRow  = [regex]::Matches($lower, "[zxcvbnm]").Count
-                $maxRow  = [math]::Max($homeRow, [math]::Max($topRow, $botRow))
-
-                $isGibberish = $false
-                
-                # Identify impossible words based on length and vowel counts
-                if ($expectedWord -ne "") {
-                    if ([math]::Abs($len - $expectedWord.Length) -ge 3) { $isGibberish = $true }
-                } else {
-                    if ($len -ge 8 -and $vowels -eq 0) { $isGibberish = $true }
-                    if ($len -ge 10 -and $vowels -le 1) { $isGibberish = $true }
-                    if ($lower -match "[bcdfghjklmnpqrstvwxz]{5,}") { $isGibberish = $true }
-                }
-
-                # High consonant count or repeating characters
-                if ($lower -match "[bcdfghjklmnpqrstvwxz]{6,}") { $isGibberish = $true }
-                if (($maxRow / $len) -ge 0.75 -and $vowels -le 1) { $isGibberish = $true }
-                if ($lower -match "(.)\1{3,}") { $isGibberish = $true }
-
-                if ($isGibberish) {
-                    $rawPenalty = $len + 5
-                    $err.Type = "Gibberish"
-                    $err.Text = "Gibberish: '$extractedWord' ($rawPenalty Stroke Penalty)"
-                    $err.StrokePen = $rawPenalty
-                    $err.WordPen = [math]::Ceiling($rawPenalty / 5.0)
-                    $err.DisplayErrorCount = $len
-                } else {
-                    $err.DisplayErrorCount = 5
-                }
-            } else {
-                $err.DisplayErrorCount = 5
-            }
-        } elseif ($err.Type -eq "Omission" -or $err.Type -eq "Space" -or $err.Type -eq "PunctuationGap" -or $err.Type -eq "Capitalization" -or $err.Type -eq "NumberFormat" -or $err.Type -eq "Grammar") {
-            if ($null -eq $err.DisplayErrorCount) { $err.DisplayErrorCount = $err.StrokePen }
-        }
-
+        
+        if ($null -eq $err.DisplayErrorCount) { $err.DisplayErrorCount = $err.StrokePen }
         [void]$filteredErrors.Add($err)
     }
 
@@ -1276,9 +1306,17 @@ function Invoke-HighlightTextBoxErrors {
         $err = $script:CurrentErrorObjects[$i]
         if ($null -ne $err.Index -and $null -ne $err.Length -and $err.Index -ge 0 -and $err.Length -gt 0 -and ($err.Index + $err.Length) -le $txtMaster.TextLength) {
             $txtMaster.Select($err.Index, $err.Length)
-            $txtMaster.SelectionColor = [System.Drawing.Color]::Red
-            if ($err.Type -eq "Space" -or $err.Type -eq "Spacing" -or $err.Type -eq "NumberFormat") {
+            
+            if ($err.Type -eq "Omission") {
+                # Distinct Light Blue marker highlight showing exactly where text was skipped
+                $txtMaster.SelectionBackColor = [System.Drawing.Color]::LightBlue
+                $txtMaster.SelectionColor = [System.Drawing.Color]::Black
+            } elseif ($err.Type -eq "Space" -or $err.Type -eq "Spacing" -or $err.Type -eq "NumberFormat") {
                 $txtMaster.SelectionBackColor = [System.Drawing.Color]::LightPink
+                $txtMaster.SelectionColor = [System.Drawing.Color]::Red
+            } else {
+                $txtMaster.SelectionColor = [System.Drawing.Color]::Red
+                $txtMaster.SelectionBackColor = [System.Drawing.Color]::White
             }
         }
     }
@@ -1331,11 +1369,9 @@ function Invoke-EndFreeHandTest {
     } else {
         [array]$errorsArray = Run-StandaloneEngine -TextData $typedText
     }
-    $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
     
-    $script:LastGrossStrokes = $typedText.Length - $spamResult.SpamStrokes
-    if ($script:LastGrossStrokes -lt 0) { $script:LastGrossStrokes = 0 }
-    $script:LastGrossWords = $script:LastGrossStrokes / 5.0
+    $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
+    $script:LastRawTextLength = $typedText.Length
     
     $script:CurrentErrorObjects = $spamResult.FinalErrors
     $script:IgnoredErrorIndices = @()
@@ -1386,8 +1422,7 @@ function Invoke-RenderScoreboard {
     $totalDisplayErrorCounter = 0
     $activeStrokesPen = 0
     $activeWordsPen = 0
-    $gibberishStrokes = 0
-    $gibberishWords = 0
+    $spamStrokesToDeduct = 0
     $renderedLogItems = @()
     
     for ($i = 0; $i -lt $script:CurrentErrorObjects.Count; $i++) {
@@ -1397,29 +1432,28 @@ function Invoke-RenderScoreboard {
         if ($script:IgnoredErrorIndices -contains $errNum) {
             $renderedLogItems += "  - [IGNORED] [$errNum] $($errObj.Text)"
         } else {
-            $activeWordsPen += $errObj.WordPen
-            $activeStrokesPen += $errObj.StrokePen
-            
-            # Identify flat gibberish penalties
-            if ($errObj.Type -eq "Gibberish") {
-                $gibberishStrokes += $errObj.StrokePen
-                $gibberishWords += $errObj.WordPen
+            if ($errObj.Type -eq "Spam") {
+                $spamStrokesToDeduct += $errObj.Length
+                $renderedLogItems += "  - [$errNum] $($errObj.Text)"
+            } else {
+                $activeWordsPen += $errObj.WordPen
+                $activeStrokesPen += $errObj.StrokePen
+                $totalDisplayErrorCounter += $errObj.DisplayErrorCount
+                $renderedLogItems += "  - [$errNum] $($errObj.Text)"
             }
-            
-            $totalDisplayErrorCounter += $errObj.DisplayErrorCount
-            $renderedLogItems += "  - [$errNum] $($errObj.Text)"
         }
     }
 
+    # Dynamically calculate Gross Strokes (If spam is ignored, it doesn't get deducted!)
+    $script:LastGrossStrokes = $script:LastRawTextLength - $spamStrokesToDeduct
+    if ($script:LastGrossStrokes -lt 0) { $script:LastGrossStrokes = 0 }
     $grossWords = $script:LastGrossStrokes / 5.0
     
-    # Mathematical backend isolates Gibberish from the standard multiplier
-    $standardWordsPen = $activeWordsPen - $gibberishWords
-    $finalWordsDeductions = ($script:LastScale * $standardWordsPen) + $gibberishWords     
+    # Standard Deductions
+    $finalWordsDeductions = ($script:LastScale * $activeWordsPen)
     $finalNetWords = $grossWords - $finalWordsDeductions
 
-    $standardStrokesPen = $activeStrokesPen - $gibberishStrokes
-    $finalStrokesDeductions = ($script:LastScale * $standardStrokesPen) + $gibberishStrokes 
+    $finalStrokesDeductions = ($script:LastScale * $activeStrokesPen)
     $finalNetStrokes = $script:LastGrossStrokes - $finalStrokesDeductions
 
     if ($script:LastGrossStrokes -gt 0) { $accuracy = ($finalNetStrokes / $script:LastGrossStrokes) * 100 } else { $accuracy = 0.0 }
@@ -1536,9 +1570,8 @@ $btnCalc.Add_Click({
         }
 
         $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
-        $script:LastGrossStrokes = $typedText.Length - $spamResult.SpamStrokes
-        if ($script:LastGrossStrokes -lt 0) { $script:LastGrossStrokes = 0 }
-        $script:LastGrossWords = $script:LastGrossStrokes / 5.0
+        $script:LastRawTextLength = $typedText.Length
+        
         $script:CurrentErrorObjects = $spamResult.FinalErrors
         $script:IgnoredErrorIndices = @()
         $script:LastDuration = $duration; $script:HasRun = $true
