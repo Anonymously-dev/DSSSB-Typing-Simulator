@@ -1,17 +1,19 @@
 # DSSSB LDC Typing Evaluation Simulator
 # Author: Verma_Ji
-# Version: DoN'T cLiCk Me
+# Description: A GUI-based typing test evaluator that calculates strokes, WPM, and errors.
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName WindowsBase
 
-# Wake up text control to fix high-DPI sizing conflicts early
+# Initialize a text control early to prevent High-DPI scaling UI issues
 $script:DpiPreWake = New-Object System.Windows.Controls.TextBox
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-# Global Application States
+# =======================================================================================
+# Global Application States & Variables
+# =======================================================================================
 $script:AppMode = "Dictionary"
 $script:UnitMode = "Words"
 $script:DictEngineType = "Native"
@@ -36,7 +38,7 @@ $script:FreeHandTotalSeconds = 0
 $script:CountdownSeconds = 0
 $script:BackspaceCount = 0
 
-# Balloon UI Notifications
+# Tooltip settings for UI elements
 $script:balloonTip = New-Object System.Windows.Forms.ToolTip
 $script:balloonTip.IsBalloon = $true
 $script:balloonTip.InitialDelay = 1400  
@@ -44,25 +46,30 @@ $script:balloonTip.ReshowDelay = 500
 $script:balloonTip.AutoPopDelay = 6000 
 
 # =======================================================================================
-# EMBEDDED ASSETS TRACK STREAMS (AUDIO CACHE BLOCKS & IMAGE LOGO)
+# Embedded Assets (Base64 Audio & Images)
 # =======================================================================================
-#$script:Base64Audio = ""
 
-# Paste your custom GTA IV background track here:
+# Paste background track Base64 here:
 $script:Base64Music = ""
 
-# Paste your short mechanical typing click WAV base64 data here:
+# Paste mechanical typing click WAV Base64 data here:
 $script:Base64TypingSound = ""
 
-# Integrated baseline graphic asset
+# Paste graphic asset Base64 here:
 $script:Base64Logo = ""
 
-# Pre-stage clean extraction loop for default auditory settings
+
+# =======================================================================================
+# Audio Players Setup
+# =======================================================================================
+
+# 1. Background Distraction Noise Player Setup
 $script:IsDistractionPlaying = $false
 $script:NoisePlayer = $null
 try {
     $script:NoisePlayer = New-Object -ComObject WMPlayer.OCX
 } catch {}
+
 $script:TempAudioPath = Join-Path $env:TEMP "dsssb_exam_noise.dat"
 
 if ($script:Base64Audio.Length -gt 100 -and $null -ne $script:NoisePlayer) {
@@ -77,10 +84,11 @@ if ($script:Base64Audio.Length -gt 100 -and $null -ne $script:NoisePlayer) {
     } catch {}
 }
 
-# Isolated typing player engine targeting internal system pointer space
+# 2. Typing Sound Effect Player Setup
 $script:InternalTypingWavPath = Join-Path $env:TEMP "dsssb_typing_click.wav"
 $script:SystemSoundPlayer = New-Object System.Media.SoundPlayer
-# 8-Second Loop Controller
+
+# Timer to stop the typing loop when the user pauses
 $script:IsTypingLoopPlaying = $false
 $script:TypingStopTimer = New-Object System.Windows.Forms.Timer
 $script:TypingStopTimer.Interval = 10000 
@@ -89,8 +97,9 @@ $script:TypingStopTimer.Add_Tick({
     $script:IsTypingLoopPlaying = $false
     try { $script:SystemSoundPlayer.Stop() } catch {}
 })
+
+# Triggers the typing sound effect based on keypresses
 function Invoke-StagedTypingSound {
-    # Abort and instantly silence if the distraction button is muted
     if (-not $script:IsDistractionPlaying) { 
         $script:TypingStopTimer.Stop()
         $script:IsTypingLoopPlaying = $false
@@ -109,35 +118,33 @@ function Invoke-StagedTypingSound {
         } catch { return }
     }
 
-    # 1. Reset the 8-second countdown clock on EVERY key press
     $script:TypingStopTimer.Stop()
     $script:TypingStopTimer.Start()
 
-    # 2. Only start playing if it isn't already playing (prevents stuttering!)
     if (-not $script:IsTypingLoopPlaying) {
         $script:IsTypingLoopPlaying = $true
         try { $script:SystemSoundPlayer.PlayLooping() } catch {}
     }
 }
 
+# Form cleanup routine (deletes temp files and stops audio on close)
 $form_FormClosing = {
     try {
-        # 1. Kill the background timers to prevent memory leaks
         if ($null -ne $LiveTimer) { $LiveTimer.Stop(); $LiveTimer.Dispose() }
         if ($null -ne $script:TypingStopTimer) { $script:TypingStopTimer.Stop(); $script:TypingStopTimer.Dispose() }
-        
-        # 2. Cleanup Audio and Temp Files
         if ($script:NoisePlayer) { $script:NoisePlayer.controls.stop() }
         if (Test-Path $script:TempAudioPath) { Remove-Item $script:TempAudioPath -Force }
         if (Test-Path $script:InternalTypingWavPath) { Remove-Item $script:InternalTypingWavPath -Force }
-        
-        # Add the Easter Egg file cleanup here instead:
         $musicPath = Join-Path $env:TEMP "gta4_popup_music.wav"
         if (Test-Path $musicPath) { Remove-Item $musicPath -Force }
     } catch {}
 }
 
-# Vector Draw: Control Border Smooth Rounding
+# =======================================================================================
+# Core Evaluation Engines
+# =======================================================================================
+
+# UI Helper: Draws rounded corners on form controls
 function Invoke-PaintRoundedCorners {
     param($sender, $e, $radius, $borderColor, $fillColor)
     $g = $e.Graphics
@@ -169,7 +176,7 @@ function Invoke-PaintRoundedCorners {
     $path.Dispose()
 }
 
-# Core Parser 1: Double-Pass Paragraph Diff Mapping
+# Text Engine 1: Comparison Mode (Checks typed text against a master reference text)
 function Run-ComparisonEngine {
     param([string]$TypedText, [string]$MasterText)
     
@@ -184,15 +191,14 @@ function Run-ComparisonEngine {
     while ($t -lt $typedMatches.Count) {
         [System.Windows.Forms.Application]::DoEvents()
         
-        # 1. Exact Case-Sensitive Match
+        # Perfect match
         if ($m -lt $masterMatches.Count -and $masterMatches[$m].Value -ceq $typedMatches[$t].Value) {
             $m++
             $t++
             continue
         }
         
-        # >>> BUG FIX PART 1: Catch Case Errors Early <<<
-        # If words match case-insensitively, flag as a simple Typo so it doesn't jump!
+        # Case mismatch or typo on the exact same word
         if ($m -lt $masterMatches.Count -and $masterMatches[$m].Value -eq $typedMatches[$t].Value) {
             $errLen = $typedMatches[$t].Length
             [void]$errorList.Add([PSCustomObject]@{ 
@@ -200,6 +206,7 @@ function Run-ComparisonEngine {
                 Text = "Typo/Case Error: '$($typedMatches[$t].Value)' (Expected: '$($masterMatches[$m].Value)')"
                 StrokePen = 5
                 WordPen = 1
+                DisplayErrorCount = 5
                 Index = $typedMatches[$t].Index
                 Length = $errLen 
             })
@@ -208,6 +215,7 @@ function Run-ComparisonEngine {
             continue
         }
 
+        # Lookahead to detect omitted words
         $bestAnchorIndex = -1
         $lowestOmissionPenalty = $maxLookahead
         
@@ -219,9 +227,6 @@ function Run-ComparisonEngine {
                     if (($mCheck + 1 -lt $masterMatches.Count) -and ($t + 1 -lt $typedMatches.Count) -and ($masterMatches[$mCheck + 1].Value -ceq $typedMatches[$t + 1].Value)) { $confidence++ }
                     if (($mCheck + 2 -lt $masterMatches.Count) -and ($t + 2 -lt $typedMatches.Count) -and ($masterMatches[$mCheck + 2].Value -ceq $typedMatches[$t + 2].Value)) { $confidence++ }
                     
-                    # >>> BUG FIX PART 2: Prevent wild single-word jumps <<<
-                    # Only allow jumping if confidence >= 2 (multiple consecutive words match), 
-                    # OR if it's a very small jump (lookahead <= 2 words).
                     if ($confidence -ge 2 -or ($confidence -eq 1 -and $look -le 2 -and $look -lt $lowestOmissionPenalty)) {
                         $lowestOmissionPenalty = $look
                         $bestAnchorIndex = $mCheck
@@ -231,36 +236,27 @@ function Run-ComparisonEngine {
             }
         }
         
-        
+        # Log omitted words
         if ($bestAnchorIndex -ne -1) {
             $skippedWordsCount = $bestAnchorIndex - $m
-            
-            # Group all skipped words into a single array
             $skippedArray = @()
-            for ($i = 0; $i -lt $skippedWordsCount; $i++) {
-                $skippedArray += $masterMatches[$m + $i].Value
-            }
-            
-            # Join them into a readable phrase
+            for ($i = 0; $i -lt $skippedWordsCount; $i++) { $skippedArray += $masterMatches[$m + $i].Value }
             $skippedPhrase = $skippedArray -join " "
             
-            # Create ONE error object, showing the FULL text
             [void]$errorList.Add([PSCustomObject]@{ 
                 Type = "Omission"
                 Text = "Omission: Skipped $skippedWordsCount word(s) -> '$skippedPhrase'"
                 StrokePen = (5 * $skippedWordsCount) 
                 WordPen = $skippedWordsCount         
+                DisplayErrorCount = (5 * $skippedWordsCount)
                 Index = -1
                 Length = 0 
             })
-            
             $m = $bestAnchorIndex + 1
             $t++
          } else {
-            # >>> FINAL LOGIC PATCH: Multi-Word Insertion Scanner <<<
+            # Lookahead to detect extra inserted words
             $insertionFound = -1
-            
-            # Scan up to 5 words ahead in the typed text to see if they just inserted a bunch of extra junk words
             for ($lookT = 1; $lookT -le 5; $lookT++) {
                 if (($t + $lookT -lt $typedMatches.Count) -and ($m -lt $masterMatches.Count) -and ($masterMatches[$m].Value -ceq $typedMatches[$t + $lookT].Value)) {
                     $insertionFound = $lookT
@@ -268,8 +264,8 @@ function Run-ComparisonEngine {
                 }
             }
 
+            # Log inserted words
             if ($insertionFound -ne -1) {
-                # Log EVERY extra word leading up to the resync anchor
                 for ($extra = 0; $extra -lt $insertionFound; $extra++) {
                     $errLen = $typedMatches[$t + $extra].Length
                     [void]$errorList.Add([PSCustomObject]@{ 
@@ -277,13 +273,14 @@ function Run-ComparisonEngine {
                         Text = "Extra Word: '$($typedMatches[$t + $extra].Value)'"
                         StrokePen = 5
                         WordPen = 1
+                        DisplayErrorCount = 5
                         Index = $typedMatches[$t + $extra].Index
                         Length = $errLen 
                     })
                 }
                 $t += $insertionFound
             } else {
-                # Standard Mismatch Fallback
+                # Fallback: Just mark it as a general typo/mismatch
                 if ($m -lt $masterMatches.Count) {
                     $errLen = $typedMatches[$t].Length
                     [void]$errorList.Add([PSCustomObject]@{ 
@@ -291,19 +288,20 @@ function Run-ComparisonEngine {
                         Text = "Typo/Case Error: '$($typedMatches[$t].Value)' (Expected: '$($masterMatches[$m].Value)')"
                         StrokePen = 5
                         WordPen = 1
+                        DisplayErrorCount = 5
                         Index = $typedMatches[$t].Index
                         Length = $errLen 
                     })
                     $m++
                     $t++
                 } else {
-                    # User typed words past the end of the master document
                     $errLen = $typedMatches[$t].Length
                     [void]$errorList.Add([PSCustomObject]@{ 
                         Type = "Insertion"
                         Text = "Extra Word: '$($typedMatches[$t].Value)'"
                         StrokePen = 5
                         WordPen = 1
+                        DisplayErrorCount = 5
                         Index = $typedMatches[$t].Index
                         Length = $errLen 
                     })
@@ -313,6 +311,7 @@ function Run-ComparisonEngine {
         }
     }
 
+    # Catch extra spacing errors
     foreach ($match in [regex]::Matches($TypedText, " {2,}")) { 
         $extraSpaceCount = ($match.Length - 1)
         [void]$errorList.Add([PSCustomObject]@{ 
@@ -322,12 +321,13 @@ function Run-ComparisonEngine {
             Length    = $match.Length
             StrokePen = 5
             WordPen   = 1  
+            DisplayErrorCount = 5
         })
     }
-
     return @($errorList.ToArray())
 }
-# Core Parser 2: Lexical Spellcheck & Grammar Engine
+
+# Text Engine 2: Dictionary Mode (Spellchecks text and validates grammar/punctuation natively)
 function Run-StandaloneEngine {
     param([string]$TextData)
     
@@ -336,6 +336,7 @@ function Run-StandaloneEngine {
     $wordCache = @{}
     $suggestionCache = @{}
 
+    # Uses Microsoft Word COM Object if selected
     if ($script:DictEngineType -eq "MSWord") {
         $globalDocObj = $null
         try {
@@ -344,9 +345,7 @@ function Run-StandaloneEngine {
             $globalDocObj = $globalWordObj.Documents.Add()
         } catch {
             [void]$errorList.Add([PSCustomObject]@{ 
-                Type = "System"
-                Text = "System Error: Microsoft Word Core Automation failed to initialize."
-                StrokePen = 0; WordPen = 0; Index = $null; Length = $null
+                Type = "System"; Text = "System Error: Microsoft Word Core Automation failed to initialize."; StrokePen = 0; WordPen = 0; DisplayErrorCount = 0; Index = $null; Length = $null
             })
             return @($errorList.ToArray())
         }
@@ -354,89 +353,65 @@ function Run-StandaloneEngine {
         foreach ($match in $wordMatches) {
             [System.Windows.Forms.Application]::DoEvents()
             $rawWord = $match.Value
-
-            if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) {
-                continue
-            }
+            
+            # Skip emails and URLs
+            if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) { continue }
             
             $word = $rawWord -replace "^[^a-zA-Z0-9]+", "" -replace "[^a-zA-Z0-9]+$", ""
             $word = $word.TrimEnd('.')
             $cleanWord = $word.ToLower()
-            
             if ($cleanWord.Length -eq 0) { continue }
 
+            # Flag lowercase "i"
             if ($word -ceq "i") {
                 [void]$errorList.Add([PSCustomObject]@{ 
-                    Type = "Grammar"
-                    Text = "Grammar Error: Lowercase 'i' used instead of 'I'"
-                    StrokePen = 5
-                    WordPen = 1 
-                    Index = $match.Index
-                    Length = $match.Length
+                    Type = "Grammar"; Text = "Grammar Error: Lowercase 'i' used instead of 'I'"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
                 })
                 continue 
             }
 
+            # Check spelling
             if (-not $wordCache.ContainsKey($cleanWord)) {
                 try {
                     $isError = -not $globalWordObj.CheckSpelling($word)
                     $wordCache[$cleanWord] = $isError
-                    
                     if ($isError) {
                         $suggestions = $globalWordObj.GetSpellingSuggestions($word)
                         if ($null -ne $suggestions -and $suggestions.Count -gt 0) {
-                            foreach ($sug in $suggestions) {
-                                $suggestionCache[$cleanWord] = $sug.Name
-                                break
-                            }
-                        } else {
-                            $suggestionCache[$cleanWord] = "Word Typo"
-                        }
+                            foreach ($sug in $suggestions) { $suggestionCache[$cleanWord] = $sug.Name; break }
+                        } else { $suggestionCache[$cleanWord] = "" }
                     }
-                } catch {
-                    $wordCache[$cleanWord] = $true
-                    $suggestionCache[$cleanWord] = "Word Typo"
-                }
+                } catch { $wordCache[$cleanWord] = $true; $suggestionCache[$cleanWord] = "" }
             }
 
             if ($wordCache[$cleanWord]) {
-                $displaySugg = if ($suggestionCache.ContainsKey($cleanWord) -and $suggestionCache[$cleanWord]) { " (Expected: '$($suggestionCache[$cleanWord])')" } else { "" }
+                $displaySugg = if ($suggestionCache.ContainsKey($cleanWord) -and $suggestionCache[$cleanWord] -ne "") { " (Expected: '$($suggestionCache[$cleanWord])')" } else { "" }
                 [void]$errorList.Add([PSCustomObject]@{ 
-                    Type = "Typo"
-                    Text = "Typo: '$rawWord'$displaySugg"
-                    StrokePen = 5
-                    WordPen = 1 
-                    Index = $match.Index
-                    Length = $match.Length
+                    Type = "Typo"; Text = "Typo: '$rawWord'$displaySugg"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
                 })
             }
         }
-
+        
+        # Cleanup MS Word Objects
         try {
-			if ($null -ne $globalDocObj) { 
-				$globalDocObj.Close([ref]0) 
-				[System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalDocObj) | Out-Null
-			}
+			if ($null -ne $globalDocObj) { $globalDocObj.Close([ref]0); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalDocObj) | Out-Null }
 			$globalWordObj.Quit()
 		} catch {}
 		[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalWordObj)
-		[GC]::Collect()
-		[GC]::WaitForPendingFinalizers()
-
+		[GC]::Collect(); [GC]::WaitForPendingFinalizers()
+    
     } else {
+        # Uses built-in Windows WPF Spellcheck API
         try {
             $wpfBox = New-Object System.Windows.Controls.TextBox
             $wpfBox.SpellCheck.IsEnabled = $true
-            
             $pumpWpf = {
                 $frame = New-Object System.Windows.Threading.DispatcherFrame
-                [System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke(
-                    [System.Windows.Threading.DispatcherPriority]::Background,
-                    [System.Action]{ $frame.Continue = $false }
-                ) | Out-Null
+                [System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [System.Action]{ $frame.Continue = $false }) | Out-Null
                 [System.Windows.Threading.Dispatcher]::PushFrame($frame)
             }
-
+            
+            # Autodetect system language for spellcheck
             $systemLang = [System.Globalization.CultureInfo]::CurrentCulture.IetfLanguageTag
             $testLangs = @($systemLang, "en-US", "en-IN", "en-GB", "en-AU", "en-CA") | Select-Object -Unique
             $activeLang = $null
@@ -445,32 +420,21 @@ function Run-StandaloneEngine {
                     $wpfBox.Language = [System.Windows.Markup.XmlLanguage]::GetLanguage($langTag)
                     $wpfBox.Text = "zzxxqqk" 
                     $attempts = 0
-                    while ($null -eq $wpfBox.GetSpellingError(0) -and $attempts -lt 15) {
-                        & $pumpWpf
-                        Start-Sleep -Milliseconds 10
-                        $attempts++
-                    }
-                    if ($null -ne $wpfBox.GetSpellingError(0)) {
-                        $activeLang = $langTag
-                        break
-                    }
+                    while ($null -eq $wpfBox.GetSpellingError(0) -and $attempts -lt 15) { & $pumpWpf; Start-Sleep -Milliseconds 10; $attempts++ }
+                    if ($null -ne $wpfBox.GetSpellingError(0)) { $activeLang = $langTag; break }
                 } catch {}
             }
-
+            
             if ($null -eq $activeLang) {
                 [void]$errorList.Add([PSCustomObject]@{ 
-                    Type = "System"
-                    Text = "System Warning: Windows typing dictionary package is missing."
-                    StrokePen = 0; WordPen = 0; Index = $null; Length = $null
+                    Type = "System"; Text = "System Warning: Windows typing dictionary package is missing."; StrokePen = 0; WordPen = 0; DisplayErrorCount = 0; Index = $null; Length = $null
                 })
             }
-
+            
             foreach ($match in $wordMatches) {
                 [System.Windows.Forms.Application]::DoEvents()
                 $rawWord = $match.Value
-                if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) {
-                    continue
-                }
+                if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) { continue }
                 $word = $rawWord -replace "^[^a-zA-Z0-9]+", "" -replace "[^a-zA-Z0-9]+$", ""
                 $word = $word.TrimEnd('.')
                 $cleanWord = $word.ToLower()
@@ -478,7 +442,7 @@ function Run-StandaloneEngine {
 				
                 if ($word -ceq "i") {
                     [void]$errorList.Add([PSCustomObject]@{ 
-                        Type = "Grammar"; Text = "Typo: 'i' (Expected: 'I')"; StrokePen = 5; WordPen = 1; Index = $match.Index; Length = $match.Length
+                        Type = "Grammar"; Text = "Typo: 'i' (Expected: 'I')"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
                     })
                     continue 
                 }
@@ -492,82 +456,54 @@ function Run-StandaloneEngine {
                     if ($isError -and $spellingError.Suggestions) {
                         $firstSugg = $spellingError.Suggestions | Select-Object -First 1
                         if ($firstSugg) { $suggestionCache[$cleanWord] = $firstSugg }
-                    }
+                    } else { $suggestionCache[$cleanWord] = "" }
                 }
 
                 if ($wordCache[$cleanWord]) {
-                    $displaySugg = if ($suggestionCache.ContainsKey($cleanWord) -and $suggestionCache[$cleanWord]) { " (Expected: '$($suggestionCache[$cleanWord])')" } else { "" }
+                    $displaySugg = if ($suggestionCache.ContainsKey($cleanWord) -and $suggestionCache[$cleanWord] -ne "") { " (Expected: '$($suggestionCache[$cleanWord])')" } else { "" }
                     [void]$errorList.Add([PSCustomObject]@{ 
-                        Type = "Typo"
-                        Text = "Typo: '$rawWord'$displaySugg"
-                        StrokePen = 5
-                        WordPen = 1 
-                        Index = $match.Index
-                        Length = $match.Length
+                        Type = "Typo"; Text = "Typo: '$rawWord'$displaySugg"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
                     })
                 }
             }
         } catch {
             [void]$errorList.Add([PSCustomObject]@{ 
-                Type = "System"
-                Text = "System Warning: Native SpellCheck configuration framework failure."
-                StrokePen = 0; WordPen = 0; Index = $null; Length = $null
+                Type = "System"; Text = "System Warning: Native SpellCheck configuration failed."; StrokePen = 0; WordPen = 0; DisplayErrorCount = 0; Index = $null; Length = $null
             })
         }
     }
 
+    # Catch general grammatical formatting errors (Spaces, Punctuation gaps, Capitalization)
     foreach ($match in [regex]::Matches($TextData, " {2,}")) { 
         [void]$errorList.Add([PSCustomObject]@{ 
-            Type      = "Space"
-            Text      = "Extra or incorrect spacing detected"
-            Index     = $match.Index
-            Length    = $match.Length
-            StrokePen = 5
-            WordPen   = 1  
+            Type      = "Space"; Text = "Extra or incorrect spacing detected"; Index = $match.Index; Length = $match.Length; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5
         })
     }
 
     foreach ($match in [regex]::Matches($TextData, "([^\s.,!?;/:]+)\s+([.,!?;/:]+)")) { 
-        $startIdx = $match.Index
-        $endIdx = $match.Index + $match.Length
-        $fullLength = $endIdx - $startIdx
-
+        $startIdx = $match.Index; $endIdx = $match.Index + $match.Length; $fullLength = $endIdx - $startIdx
         $itemsToRemove = New-Object System.Collections.ArrayList
         foreach ($err in $errorList) {
             if ($err.Index -lt $endIdx -and ($err.Index + $err.Length) -gt $startIdx) {
-                if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar" -or $err.Type -eq "Space") {
-                    [void]$itemsToRemove.Add($err)
-                }
+                if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar" -or $err.Type -eq "Space") { [void]$itemsToRemove.Add($err) }
             }
         }
         foreach ($item in $itemsToRemove) { $errorList.Remove($item) }
-
         [void]$errorList.Add([PSCustomObject]@{ 
-            Type = "PunctuationGap"
-            Text = "Invalid space before punctuation: '$($match.Value)'"
-            StrokePen = 5
-            WordPen = 1
-            Index = $startIdx
-            Length = $fullLength
+            Type = "PunctuationGap"; Text = "Invalid space before punctuation: '$($match.Value)'"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $startIdx; Length = $fullLength
         })
     }
 
     foreach ($match in [regex]::Matches($TextData, "([.,!?;/:]+)([a-zA-Z0-9]+)")) {
-        $punc = $match.Groups[1].Value
-        $targetWord = $match.Groups[2].Value
-        $startIdx = $match.Index
+        $punc = $match.Groups[1].Value; $targetWord = $match.Groups[2].Value; $startIdx = $match.Index
         while ($startIdx -gt 0 -and -not [char]::IsWhiteSpace($TextData[$startIdx - 1])) { $startIdx-- }
         $endIdx = $match.Index + $match.Length
         while ($endIdx -lt $TextData.Length -and -not [char]::IsWhiteSpace($TextData[$endIdx])) { $endIdx++ }
-        $fullLength = $endIdx - $startIdx
-        $fullWord = $TextData.Substring($startIdx, $fullLength)
-        $isException = $false
+        $fullLength = $endIdx - $startIdx; $fullWord = $TextData.Substring($startIdx, $fullLength); $isException = $false
 
         if ($match.Index -gt 0) {
             $prevChar = $TextData.Substring($match.Index - 1, 1)
-            if ($prevChar -match "[0-9]" -and $targetWord -match "^[0-9]+$" -and $punc -match "^[.,:]$") {
-                $isException = $true
-            }
+            if ($prevChar -match "[0-9]" -and $targetWord -match "^[0-9]+$" -and $punc -match "^[.,:]$") { $isException = $true }
         }
         if ($fullWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") { $isException = $true }
         if ($fullWord -match "^(www\.|https?://)") { $isException = $true }
@@ -576,77 +512,49 @@ function Run-StandaloneEngine {
             $itemsToRemove = New-Object System.Collections.ArrayList
             foreach ($err in $errorList) {
                 if ($err.Index -lt $endIdx -and ($err.Index + $err.Length) -gt $startIdx) {
-                    if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar") {
-                        [void]$itemsToRemove.Add($err)
-                    }
+                    if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar") { [void]$itemsToRemove.Add($err) }
                 }
             }
             foreach ($item in $itemsToRemove) { $errorList.Remove($item) }
-
             [void]$errorList.Add([PSCustomObject]@{ 
-                Type      = "PunctuationGap"
-                Text = "Missing space after punctuation: '$fullWord'"
-                StrokePen = 5
-                WordPen   = 1  
-                Index     = $startIdx
-                Length = $fullLength
+                Type = "PunctuationGap"; Text = "Missing space after punctuation: '$fullWord'"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $startIdx; Length = $fullLength
             })
         }
     }
 
     foreach ($match in [regex]::Matches($TextData, "([.]\s+)([a-z][a-zA-Z0-9'-]*)")) {
-        $targetWord = $match.Groups[2].Value
-        $wordIdx = $match.Groups[2].Index
-        $wordLen = $match.Groups[2].Length
+        $targetWord = $match.Groups[2].Value; $wordIdx = $match.Groups[2].Index; $wordLen = $match.Groups[2].Length
         $itemsToRemove = New-Object System.Collections.ArrayList
         foreach ($err in $errorList) {
             if ($err.Index -ge $wordIdx -and ($err.Index + $err.Length) -le ($wordIdx + $wordLen)) {
-                if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar") {
-                    [void]$itemsToRemove.Add($err)
-                }
+                if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar") { [void]$itemsToRemove.Add($err) }
             }
         }
         foreach ($item in $itemsToRemove) { $errorList.Remove($item) }
-
         [void]$errorList.Add([PSCustomObject]@{ 
-            Type = "Capitalization"
-            Text = "Capitalization Error: '$targetWord' should be capitalized after period."
-            StrokePen = 5
-            WordPen = 1
-            Index = $wordIdx
-            Length = $wordLen
+            Type = "Capitalization"; Text = "Capitalization Error: '$targetWord' should be capitalized after period."; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $wordIdx; Length = $wordLen
         })
     }
 	
     foreach ($regexMatch in [regex]::Matches($TextData, "([0-9]+\s*\.\s*[0-9]+)")) {
         if ($regexMatch.Value -match "\s") {
-            $startIdx = [int]$regexMatch.Index
-            $fullLength = [int]$regexMatch.Length
+            $startIdx = [int]$regexMatch.Index; $fullLength = [int]$regexMatch.Length
             $itemsToRemove = New-Object System.Collections.ArrayList
             foreach ($err in $errorList) {
                 if ($null -ne $err.Index -and $null -ne $err.Length) {
-                    if ([int]$err.Index -lt ($startIdx + $fullLength) -and ([int]$err.Index + [int]$err.Length) -gt $startIdx) {
-                        [void]$itemsToRemove.Add($err)
-                    }
+                    if ([int]$err.Index -lt ($startIdx + $fullLength) -and ([int]$err.Index + [int]$err.Length) -gt $startIdx) { [void]$itemsToRemove.Add($err) }
                 }
             }
             foreach ($item in $itemsToRemove) { $errorList.Remove($item) }
-
             [void]$errorList.Add([PSCustomObject]@{ 
-                Type      = "NumberFormat"
-                Text      = "Invalid space inside decimal number: '$($regexMatch.Value)'"
-                StrokePen = 5
-                WordPen   = 1
-                Index     = $startIdx
-                Length = $fullLength
+                Type = "NumberFormat"; Text = "Invalid space inside decimal number: '$($regexMatch.Value)'"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $startIdx; Length = $fullLength
             })
         }
     }
-	
     return @($errorList.ToArray()) 
 }
 
-# Core Parser 3: Anti-Spam Exploit Filter
+# Text Engine 3: Anti-Spam Filter (Identifies gibberish typing to prevent score cheating)
 function Invoke-AntiSpamFilter {
     param([string]$InputText, [array]$EngineErrors)
     
@@ -654,29 +562,91 @@ function Invoke-AntiSpamFilter {
     $spamList = New-Object System.Collections.ArrayList
     $filteredErrors = New-Object System.Collections.ArrayList
     
-    $spamMatches = [regex]::Matches($InputText, "\S{19,}")
-    foreach ($match in $spamMatches) {
+    # Catch massive strings without spaces
+    $possibleSpamMatches = [regex]::Matches($InputText, "\S{19,}")
+    $actualSpamMatches = New-Object System.Collections.ArrayList
+
+    foreach ($match in $possibleSpamMatches) {
+        if ($val -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$") { continue }
+        if ($val -match "-") { continue }
+        [void]$actualSpamMatches.Add($match)
+    }
+    
+    foreach ($match in $actualSpamMatches) {
         $spamStrokes += $match.Length
         $preview = if ($match.Length -gt 15) { $match.Value.Substring(0,12) + "..." } else { $match.Value }
         [void]$spamList.Add([PSCustomObject]@{
             Type = "Spam"
-            Text = "Invalid Data (Ignored): Word exceeds 18 chars ('$preview')"
+            Text = "Invalid Data (Ignored): Malicious key spam detected ('$preview')"
             StrokePen = 0 
             WordPen = 0
+            DisplayErrorCount = $match.Length
             Index = $match.Index
             Length = $match.Length
         })
     }
 
+    # Evaluate existing errors for gibberish characteristics
     foreach ($err in $EngineErrors) {
         $isOverlap = $false
-        foreach ($match in $spamMatches) {
+        foreach ($match in $actualSpamMatches) {
             if ($null -ne $err.Index -and $err.Index -ge $match.Index -and $err.Index -lt ($match.Index + $match.Length)) {
-                $isOverlap = $true
-                break
+                $isOverlap = $true; break
             }
         }
-        if (-not $isOverlap) { [void]$filteredErrors.Add($err) }
+        if ($isOverlap) { continue }
+
+        if ($err.Type -eq "Typo" -or $err.Type -eq "Mismatch" -or $err.Type -eq "Insertion") {
+            $extractedWord = ""
+            if ($err.Text -match "'([^']+)'") { $extractedWord = $matches[1] }
+            
+            $lower = $extractedWord.ToLower()
+            $len = $lower.Length
+
+            if ($len -ge 4) {
+                $expectedWord = ""
+                if ($err.Text -match "\(Expected: '([^']+)'\)") { $expectedWord = $matches[1] }
+                
+                $vowels = [regex]::Matches($lower, "[aeiouy]").Count
+                $homeRow = [regex]::Matches($lower, "[asdfghjkl]").Count
+                $topRow  = [regex]::Matches($lower, "[qwertyuiop]").Count
+                $botRow  = [regex]::Matches($lower, "[zxcvbnm]").Count
+                $maxRow  = [math]::Max($homeRow, [math]::Max($topRow, $botRow))
+
+                $isGibberish = $false
+                
+                # Identify impossible words based on length and vowel counts
+                if ($expectedWord -ne "") {
+                    if ([math]::Abs($len - $expectedWord.Length) -ge 3) { $isGibberish = $true }
+                } else {
+                    if ($len -ge 8 -and $vowels -eq 0) { $isGibberish = $true }
+                    if ($len -ge 10 -and $vowels -le 1) { $isGibberish = $true }
+                    if ($lower -match "[bcdfghjklmnpqrstvwxz]{5,}") { $isGibberish = $true }
+                }
+
+                # High consonant count or repeating characters
+                if ($lower -match "[bcdfghjklmnpqrstvwxz]{6,}") { $isGibberish = $true }
+                if (($maxRow / $len) -ge 0.75 -and $vowels -le 1) { $isGibberish = $true }
+                if ($lower -match "(.)\1{3,}") { $isGibberish = $true }
+
+                if ($isGibberish) {
+                    $rawPenalty = $len + 5
+                    $err.Type = "Gibberish"
+                    $err.Text = "Gibberish: '$extractedWord' ($rawPenalty Stroke Penalty)"
+                    $err.StrokePen = $rawPenalty
+                    $err.WordPen = [math]::Ceiling($rawPenalty / 5.0)
+                    $err.DisplayErrorCount = $len
+                } else {
+                    $err.DisplayErrorCount = 5
+                }
+            } else {
+                $err.DisplayErrorCount = 5
+            }
+        } elseif ($err.Type -eq "Omission" -or $err.Type -eq "Space" -or $err.Type -eq "PunctuationGap" -or $err.Type -eq "Capitalization" -or $err.Type -eq "NumberFormat" -or $err.Type -eq "Grammar") {
+            if ($null -eq $err.DisplayErrorCount) { $err.DisplayErrorCount = $err.StrokePen }
+        }
+
+        [void]$filteredErrors.Add($err)
     }
 
     return @{
@@ -685,7 +655,11 @@ function Invoke-AntiSpamFilter {
     }
 }
 
-# Main Application Frame Mount
+# =======================================================================================
+# UI Elements Setup
+# =======================================================================================
+
+# 1. Main Form Initialization
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "DSSSB Typist"
 $form.Size = New-Object System.Drawing.Size(900, 1020)
@@ -719,17 +693,13 @@ $lblAuthor.Size = New-Object System.Drawing.Size(2000, 25)
 $lblAuthor.Location = New-Object System.Drawing.Point(34, 80)
 $lblAuthor.Cursor = [System.Windows.Forms.Cursors]::Hand
 $lblAuthor.Add_Click({
-    try {
-        [System.Diagnostics.Process]::Start("https://t.me/vermaJiofficial")
-    } catch {
-        [System.Windows.Forms.MessageBox]::Show("Unable to open browser link.", "Navigation Error")
-    }
+    try { [System.Diagnostics.Process]::Start("https://t.me/vermaJiofficial") } catch { [System.Windows.Forms.MessageBox]::Show("Unable to open browser link.", "Navigation Error") }
 })
 $form.Controls.Add($lblAuthor)
 
 $CardPaintLayout = { param($sender, $e) Invoke-PaintRoundedCorners $sender $e 14 "#CBD5E1" "#FFFFFF" }
 
-# System Configurations Area Setup
+# 2. Settings Configuration Panel
 $pnlConfig = New-Object System.Windows.Forms.Panel
 $pnlConfig.Location = New-Object System.Drawing.Point(30, 115) 
 $pnlConfig.Height = 100 
@@ -798,14 +768,8 @@ $btnToggleEngine.Add_Click({
         $wordInstalled = $false
         try {
             $testWord = New-Object -ComObject Word.Application -ErrorAction Stop
-            if ($testWord) {
-                $wordInstalled = $true
-                $testWord.Quit()
-                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($testWord) | Out-Null
-            }
-        } catch {
-            $wordInstalled = $false
-        }
+            if ($testWord) { $wordInstalled = $true; $testWord.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($testWord) | Out-Null }
+        } catch { $wordInstalled = $false }
         if (-not $wordInstalled) {
             [System.Windows.Forms.MessageBox]::Show("Microsoft Word is not installed or registered on this system. Cannot switch to MS Word Engine.", "MS Word Not Installed", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
             return
@@ -859,7 +823,7 @@ $btnToggleMode.BackColor = [System.Drawing.Color]::Transparent
 $btnToggleMode.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnToggleMode.Tag = "normal"
 $btnToggleMode.Add_Click({
-    if ($script:IsTestRunning) { return } # Only block if the timer is ticking!
+    if ($script:IsTestRunning) { return }
     if ($script:AppMode -eq "Dictionary") {
         $script:AppMode = "Comparison"
         $btnToggleMode.Text = "Mode: Comparison"
@@ -976,19 +940,14 @@ $btnDistraction.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnDistraction.Tag = "normal"
 $btnDistraction.Add_Click({
     $script:IsDistractionPlaying = -not $script:IsDistractionPlaying
-    
     if ($script:IsDistractionPlaying) {
         if ($null -ne $script:NoisePlayer) { $script:NoisePlayer.controls.play() }
         $btnDistraction.Text = [char]::ConvertFromUtf32(0x1F50A) 
-    } 
-    else {
+    } else {
         if ($null -ne $script:NoisePlayer) { $script:NoisePlayer.controls.stop() }
-        
-        # Instantly kill the typing loop when muted
         $script:TypingStopTimer.Stop()
         $script:IsTypingLoopPlaying = $false
         try { $script:SystemSoundPlayer.Stop() } catch {}
-        
         $btnDistraction.Text = [char]::ConvertFromUtf32(0x1F507) 
     }
     $btnDistraction.Invalidate()
@@ -1006,14 +965,13 @@ $btnDistraction.Add_Paint({
     $rect = New-Object System.Drawing.Rectangle(0, 0, ($sender.Width - 1), ($sender.Height - 1))
     $g.FillEllipse($brush, $rect)
     $g.DrawEllipse($pen, $rect)
-    $brush.Dispose()
-    $pen.Dispose()
+    $brush.Dispose(); $pen.Dispose()
     $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
     [System.Windows.Forms.TextRenderer]::DrawText($g, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#1E293B"), $flags)
 })
 $pnlConfig.Controls.Add($btnDistraction)
 
-# Input Workspace Area
+# 3. Text Input Workspace Area
 $pnlMaster = New-Object System.Windows.Forms.Panel
 $pnlMaster.Location = New-Object System.Drawing.Point(30, 245)
 $pnlMaster.Size = New-Object System.Drawing.Size(790, 230)
@@ -1050,11 +1008,7 @@ $btnCopyMaster.Add_Paint({
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#005FB8"), $flags)
 })
 $btnCopyMaster.Add_Click({
-    try {
-        if (![string]::IsNullOrWhiteSpace($txtMaster.Text)) { 
-            [System.Windows.Forms.Clipboard]::SetText($txtMaster.Text) 
-        }
-    } catch {}
+    try { if (![string]::IsNullOrWhiteSpace($txtMaster.Text)) { [System.Windows.Forms.Clipboard]::SetText($txtMaster.Text) } } catch {}
 })
 $pnlMaster.Controls.Add($btnCopyMaster)
 
@@ -1079,11 +1033,7 @@ $btnPasteMaster.Add_Paint({
 })
 $btnPasteMaster.Add_Click({
     if ($txtMaster.ReadOnly) { return }
-    try {
-        if ([System.Windows.Forms.Clipboard]::ContainsText()) { 
-            $txtMaster.Text = [System.Windows.Forms.Clipboard]::GetText() 
-        }
-    } catch {
+    try { if ([System.Windows.Forms.Clipboard]::ContainsText()) { $txtMaster.Text = [System.Windows.Forms.Clipboard]::GetText() } } catch {
         [System.Windows.Forms.MessageBox]::Show("Clipboard is currently locked by another process. Please try again.", "Clipboard Error")
     }
 })
@@ -1108,10 +1058,7 @@ $btnClearMaster.Add_Paint({
     $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#DC2626"), $flags)
 })
-$btnClearMaster.Add_Click({
-    if ($txtMaster.ReadOnly) { return }
-    $txtMaster.Text = ""
-})
+$btnClearMaster.Add_Click({ if ($txtMaster.ReadOnly) { return }; $txtMaster.Text = "" })
 $pnlMaster.Controls.Add($btnClearMaster)
 
 $lblLiveStats = New-Object System.Windows.Forms.Label
@@ -1184,9 +1131,7 @@ $txtMaster.Font = New-Object System.Drawing.Font("Segoe UI", 13.5)
 $txtMaster.ForeColor = [System.Drawing.Color]::Black
 $txtMaster.Add_KeyDown({
     param($sender, $e)
-    # Fire embedded sound pointer layer instantly
     Invoke-StagedTypingSound
-    
     if ($script:IsTestRunning -and $e.KeyCode -eq [System.Windows.Forms.Keys]::Back) {
         $script:BackspaceCount++
         Invoke-UpdateLiveStats
@@ -1194,7 +1139,7 @@ $txtMaster.Add_KeyDown({
 })
 $pnlMaster.Controls.Add($txtMaster)
 
-# Execute Summary Actions Panel
+# 4. Run Analysis Button Setup
 $btnCalc = New-Object System.Windows.Forms.Button
 $btnCalc.Text = "Run Analysis"
 $btnCalc.Location = New-Object System.Drawing.Point(30, 495) 
@@ -1219,7 +1164,7 @@ $btnCalc.Add_Paint({
 })
 $form.Controls.Add($btnCalc)
 
-# Evaluation Log Display Block
+# 5. Results & Output Console Area
 $pnlOutput = New-Object System.Windows.Forms.Panel
 $pnlOutput.Location = New-Object System.Drawing.Point(30, 560) 
 $pnlOutput.Padding = New-Object System.Windows.Forms.Padding(12) 
@@ -1240,7 +1185,7 @@ $txtOutput.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $txtOutput.Text = "`r`n  [System Ready] Select a mode and click Run Analysis..."
 $pnlOutput.Controls.Add($txtOutput)
 
-# Easter Egg Update: "DoN'T cLiCk Me" - High Contrast Styling Label Control
+# Easter Egg Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
 $lblVersion.Text = "DoN'T cLiCk Me"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
@@ -1251,33 +1196,25 @@ $lblVersion.TextAlign = [System.Drawing.ContentAlignment]::BottomRight
 $lblVersion.Cursor = [System.Windows.Forms.Cursors]::Hand
 
 $lblVersion.Add_Click({
-    # --- 1. AUDIO INITIALIZATION (NATIVE .NET ENGINE) ---
     $popupPlayer = New-Object System.Media.SoundPlayer
     $musicPath = Join-Path $env:TEMP "gta4_popup_music.wav"
-    
     if ($script:Base64Music.Length -gt 100) {
         try {
             $musicBytes = [System.Convert]::FromBase64String($script:Base64Music)
             [IO.File]::WriteAllBytes($musicPath, $musicBytes)
             $popupPlayer.SoundLocation = $musicPath
             $popupPlayer.Load()
-            $popupPlayer.PlayLooping() # This loops the track infinitely
-        } catch {
-            # Failsafe just in case the Base64 data is corrupted
-        }
+            $popupPlayer.PlayLooping()
+        } catch {}
     }
 
-    # --- 2. POPUP WINDOW UI MOUNT ---
     $popup = New-Object System.Windows.Forms.Form
     $popup.Size = New-Object System.Drawing.Size(430, 300)
     $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
     $popup.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
-    
-    # HIDE ALL SYSTEM BUTTONS (Removes 'X', Minimize, Maximize)
     $popup.ControlBox = $false 
     $popup.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#111111")
 
-    # Add a custom title label since ControlBox is now false
     $lblTitle = New-Object System.Windows.Forms.Label
     $lblTitle.Text = ""
     $lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
@@ -1290,7 +1227,6 @@ $lblVersion.Add_Click({
     $picLogo.Size = New-Object System.Drawing.Size(370, 110)
     $picLogo.Location = New-Object System.Drawing.Point(20, 35)
     $picLogo.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
-    
     try {
         $imgBytes = [System.Convert]::FromBase64String($script:Base64Logo)
         $ms = New-Object System.IO.MemoryStream(,$imgBytes)
@@ -1319,31 +1255,15 @@ $lblVersion.Add_Click({
     $popup.Controls.Add($btnOkPopup)
 
     [void]$popup.ShowDialog($form)
-    
-    # Cleanup
-    if ($null -ne $popupPlayer) {
-        try { $popupPlayer.Stop() } catch {}
-        $popupPlayer.Dispose()
-    }
+    if ($null -ne $popupPlayer) { try { $popupPlayer.Stop() } catch {}; $popupPlayer.Dispose() }
     $popup.Dispose()
 })
-
 $form.Controls.Add($lblVersion)
 
-# Toolbar Descriptions Configuration
-$script:balloonTip.SetToolTip($btnBrowse, "Browse and load a .txt target file containing your typed draft.")
-$script:balloonTip.SetToolTip($btnToggleEngine, "Switch spellcheck framework between Windows Native API and Microsoft Word Automation Core.")
-$script:balloonTip.SetToolTip($btnToggleMode, "Toggle standard structural Dictionary Mode or strict Paragraph Comparison Mode.")
-$script:balloonTip.SetToolTip($btnToggleUnit, "Toggle dashboard configurations between Key Strokes counts and Word tokens.")
-$script:balloonTip.SetToolTip($btnIgnore, "Exclude precise selected formatting errors, spaces, or specific structural typos from calculations.")
-$script:balloonTip.SetToolTip($btnFreeHand, "Initialize or teardown the time-bound mock testing interface workspace workflow.")
-$script:balloonTip.SetToolTip($btnDistraction, "Toggle background loop playback simulation mimicking real chaotic state examination spaces.")
-$script:balloonTip.SetToolTip($btnStartFreeHand, "Trigger the initial sequence countdown loop for the physical typing workspace.")
-$script:balloonTip.SetToolTip($btnSubmitTest, "Force execution processing constraints immediately on the currently active text draft.")
-$script:balloonTip.SetToolTip($btnCalc, "Trigger evaluation parsers immediately against configuration arrays and build summary logs.")
-$script:balloonTip.SetToolTip($btnCopyMaster, "Copy the current text inside the box directly to your system clipboard.")
-$script:balloonTip.SetToolTip($btnPasteMaster, "Paste your clipboard contents directly into the text editing box.")
-$script:balloonTip.SetToolTip($btnClearMaster, "Clear all input content inside the text editing box.")
+
+# =======================================================================================
+# Test Logic & Event Management
+# =======================================================================================
 
 function Invoke-HighlightTextBoxErrors {
     $txtMaster.SelectAll()
@@ -1354,30 +1274,29 @@ function Invoke-HighlightTextBoxErrors {
         $errNum = $i + 1
         if ($script:IgnoredErrorIndices -contains $errNum) { continue }
         $err = $script:CurrentErrorObjects[$i]
-        
         if ($null -ne $err.Index -and $null -ne $err.Length -and $err.Index -ge 0 -and $err.Length -gt 0 -and ($err.Index + $err.Length) -le $txtMaster.TextLength) {
             $txtMaster.Select($err.Index, $err.Length)
             $txtMaster.SelectionColor = [System.Drawing.Color]::Red
-            
             if ($err.Type -eq "Space" -or $err.Type -eq "Spacing" -or $err.Type -eq "NumberFormat") {
                 $txtMaster.SelectionBackColor = [System.Drawing.Color]::LightPink
             }
         }
     }
-    
     $txtMaster.Select(0, 0)
     $txtMaster.SelectionColor = [System.Drawing.Color]::Black
 }
 
-# Real-time Metrics Refresh Clocks
+# Real-time UI Updates for Live Testing
 $LiveTimer = New-Object System.Windows.Forms.Timer
 $LiveTimer.Interval = 1000
 
 function Invoke-UpdateLiveStats {
     if (-not $script:IsFreeHandActive) { return }
-    
     $rawText = $txtMaster.Text
-    $strokes = $rawText.Length
+    $tempSpam = Invoke-AntiSpamFilter -InputText $rawText -EngineErrors @()
+    $strokes = $rawText.Length - $tempSpam.SpamStrokes
+    if ($strokes -lt 0) { $strokes = 0 }
+
     $elapsedSeconds = $script:FreeHandTotalSeconds - $script:FreeHandSecondsLeft
     if ($elapsedSeconds -le 0) { $elapsedSeconds = 1 }
     
@@ -1389,35 +1308,22 @@ function Invoke-UpdateLiveStats {
     $lblLiveStats.Text = "Strokes: $strokes  |  Speed: $([math]::Round($liveWpm, 1)) WPM  |  Backspaces: $($script:BackspaceCount)"
 }
 
-$txtMaster.Add_TextChanged({
-    if ($script:IsTestRunning) { Invoke-UpdateLiveStats }
-})
+$txtMaster.Add_TextChanged({ if ($script:IsTestRunning) { Invoke-UpdateLiveStats } })
 
 function Invoke-EndFreeHandTest {
     $LiveTimer.Stop()
     $txtMaster.ReadOnly = $true
-    $script:IsFreeHandActive = $false
-    $script:IsTestRunning = $false
-	$pnlConfig.Invalidate($true)
-    $btnFreeHand.Invalidate()
-    $lblMaster.Visible = $true
+    $script:IsFreeHandActive = $false; $script:IsTestRunning = $false
+	$pnlConfig.Invalidate($true); $btnFreeHand.Invalidate(); $lblMaster.Visible = $true
+    $btnCopyMaster.Visible = $true; $btnPasteMaster.Visible = $true; $btnClearMaster.Visible = $true
+    $lblLiveStats.Visible = $false; $lblTimerDisplay.Visible = $false; $btnStartFreeHand.Visible = $false; $btnSubmitTest.Visible = $false
     
-    $btnCopyMaster.Visible = $true
-    $btnPasteMaster.Visible = $true
-    $btnClearMaster.Visible = $true
-    
-    $lblLiveStats.Visible = $false
-    $lblTimerDisplay.Visible = $false
-    $btnStartFreeHand.Visible = $false
-    $btnSubmitTest.Visible = $false
-    
-    $txtOutput.Text = "`r`n  Booting Dynamic Evaluation Engine. Heating up memory cache..."
+    $txtOutput.Text = "`r`n  Evaluating typing test results..."
     [System.Windows.Forms.Application]::DoEvents()
 
     $typedText = $txtMaster.Text
     $script:LastScale = 2.0
     
-    # --- Smart Routing based on Active App Mode ---
     if ($script:AppMode -eq "Comparison") {
         $rawText = Get-Content $txtPath.Text -Raw -Encoding UTF8
         $masterTextFile = if ($null -ne $rawText) { $rawText -replace "`r`n", "`n" } else { "" }
@@ -1425,7 +1331,6 @@ function Invoke-EndFreeHandTest {
     } else {
         [array]$errorsArray = Run-StandaloneEngine -TextData $typedText
     }
-    # --- Execute Anti-Spam Check ---
     $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
     
     $script:LastGrossStrokes = $typedText.Length - $spamResult.SpamStrokes
@@ -1447,34 +1352,19 @@ function Invoke-EndFreeHandTest {
 $LiveTimer.Add_Tick({
     if (-not $script:IsTestRunning) {
         $script:CountdownSeconds--
-        if ($script:CountdownSeconds -gt 0) {
-            $lblTimerDisplay.Text = "Starts in $($script:CountdownSeconds)..."
-        } else {
-            $script:IsTestRunning = $true
-			$pnlConfig.Invalidate($true)
-            $txtMaster.ReadOnly = $false
-            $txtMaster.Focus()
-            $btnSubmitTest.Visible = $true 
-            Invoke-UpdateLiveStats 
+        if ($script:CountdownSeconds -gt 0) { $lblTimerDisplay.Text = "Starts in $($script:CountdownSeconds)..." } else {
+            $script:IsTestRunning = $true; $pnlConfig.Invalidate($true)
+            $txtMaster.ReadOnly = $false; $txtMaster.Focus(); $btnSubmitTest.Visible = $true; Invoke-UpdateLiveStats 
         }
     } else {
-        if ($script:FreeHandSecondsLeft -gt 0) {
-            $script:FreeHandSecondsLeft--
-            Invoke-UpdateLiveStats
-        } else {
-            $LiveTimer.Stop()
-            [System.Windows.Forms.MessageBox]::Show("Time is up! Processing your metrics now.", "Session Finished")
+        if ($script:FreeHandSecondsLeft -gt 0) { $script:FreeHandSecondsLeft--; Invoke-UpdateLiveStats } else {
+            $LiveTimer.Stop(); [System.Windows.Forms.MessageBox]::Show("Time is up! Processing your metrics now.", "Session Finished")
             Invoke-EndFreeHandTest
         }
     }
 })
 
-$btnSubmitTest.Add_Click({
-    if ($script:IsTestRunning) {
-        [System.Windows.Forms.MessageBox]::Show("Test manually submitted early. Processing exact elapsed time metrics...", "Early Submission")
-        Invoke-EndFreeHandTest
-    }
-})
+$btnSubmitTest.Add_Click({ if ($script:IsTestRunning) { [System.Windows.Forms.MessageBox]::Show("Test manually submitted early. Processing exact elapsed time metrics...", "Early Submission"); Invoke-EndFreeHandTest } })
 
 function Invoke-BoldNetSpeedLogic {
     if ($txtOutput.TextLength -gt 0) {
@@ -1490,11 +1380,14 @@ function Invoke-BoldNetSpeedLogic {
     }
 }
 
-# Score Metric Calculation Dashboard Builder
+# Processes errors and renders the final scoreboard view
 function Invoke-RenderScoreboard {
     if (-not $script:HasRun) { return }
+    $totalDisplayErrorCounter = 0
     $activeStrokesPen = 0
     $activeWordsPen = 0
+    $gibberishStrokes = 0
+    $gibberishWords = 0
     $renderedLogItems = @()
     
     for ($i = 0; $i -lt $script:CurrentErrorObjects.Count; $i++) {
@@ -1504,32 +1397,47 @@ function Invoke-RenderScoreboard {
         if ($script:IgnoredErrorIndices -contains $errNum) {
             $renderedLogItems += "  - [IGNORED] [$errNum] $($errObj.Text)"
         } else {
-            # >>> FIX: Read the actual penalty values stored in the error object <<<
             $activeWordsPen += $errObj.WordPen
             $activeStrokesPen += $errObj.StrokePen
+            
+            # Identify flat gibberish penalties
+            if ($errObj.Type -eq "Gibberish") {
+                $gibberishStrokes += $errObj.StrokePen
+                $gibberishWords += $errObj.WordPen
+            }
+            
+            $totalDisplayErrorCounter += $errObj.DisplayErrorCount
             $renderedLogItems += "  - [$errNum] $($errObj.Text)"
         }
     }
 
     $grossWords = $script:LastGrossStrokes / 5.0
     
-    $finalWordsDeductions = $script:LastScale * $activeWordsPen     
+    # Mathematical backend isolates Gibberish from the standard multiplier
+    $standardWordsPen = $activeWordsPen - $gibberishWords
+    $finalWordsDeductions = ($script:LastScale * $standardWordsPen) + $gibberishWords     
     $finalNetWords = $grossWords - $finalWordsDeductions
-    if ($finalNetWords -lt 0) { $finalNetWords = 0.0 }
 
-    $finalStrokesDeductions = $script:LastScale * $activeStrokesPen 
+    $standardStrokesPen = $activeStrokesPen - $gibberishStrokes
+    $finalStrokesDeductions = ($script:LastScale * $standardStrokesPen) + $gibberishStrokes 
     $finalNetStrokes = $script:LastGrossStrokes - $finalStrokesDeductions
-    if ($finalNetStrokes -lt 0) { $finalNetStrokes = 0.0 }
 
     if ($script:LastGrossStrokes -gt 0) { $accuracy = ($finalNetStrokes / $script:LastGrossStrokes) * 100 } else { $accuracy = 0.0 }
+    if ($accuracy -lt 0) { $accuracy = 0.0 }
+    
     $grossWpm = $grossWords / $script:LastDuration
     $netWpm = $finalNetWords / $script:LastDuration
+    if ($netWpm -lt 0 -and $script:LastGrossStrokes -gt 0) {
+        # Allow negative net speed calculations to properly reflect heavy cheat penalties
+    } elseif ($netWpm -lt 0) {
+        $netWpm = 0.0
+    }
 
     if ($script:UnitMode -eq "Words") {
-        $col1 = "{0,-32}{1}" -f "  Gross Words Typed : $([math]::Round($grossWords, 2))", "Error Words     : $activeWordsPen"
+        $col1 = "{0,-32}{1}" -f "  Gross Words Typed : $([math]::Round($grossWords, 2))", "Error Words     : $([math]::Round(($totalDisplayErrorCounter / 5.0), 2))"
         $col2 = "{0,-32}{1}" -f "  Deduction Ratio   : $($script:LastScale)x", "Net Compliant   : $([math]::Round($finalNetWords, 2)) Words"
     } else {
-        $col1 = "{0,-32}{1}" -f "  Gross Key Strokes : $($script:LastGrossStrokes)", "Errors Detected : $activeStrokesPen"
+        $col1 = "{0,-32}{1}" -f "  Gross Key Strokes : $($script:LastGrossStrokes)", "Errors Detected : $totalDisplayErrorCounter"
         $col2 = "{0,-32}{1}" -f "  Deduction Ratio   : $($script:LastScale)x", "Net Compliant   : $([int][math]::Floor($finalNetStrokes)) Strokes"
     }
 
@@ -1555,86 +1463,43 @@ function Invoke-RenderScoreboard {
 
     $txtOutput.Text = $sb -join "`r`n"
     Invoke-BoldNetSpeedLogic
-    $txtOutput.SelectionStart = 0
-    $txtOutput.ScrollToCaret()
-    $txtOutput.Refresh()
+    $txtOutput.SelectionStart = 0; $txtOutput.ScrollToCaret(); $txtOutput.Refresh()
 }
 
 $btnFreeHand.Add_Click({
     if ($script:IsFreeHandActive) {
-        $LiveTimer.Stop()
-        $script:IsFreeHandActive = $false
-        $script:IsTestRunning = $false
-		$pnlConfig.Invalidate($true)
-        $txtMaster.ReadOnly = $false
-        $btnFreeHand.Invalidate()
-        $lblMaster.Visible = $true
-        
-        $btnCopyMaster.Visible = $true
-        $btnPasteMaster.Visible = $true
-        $btnClearMaster.Visible = $true
-        
-        $lblLiveStats.Visible = $false
-        $lblTimerDisplay.Visible = $false
-        $btnStartFreeHand.Visible = $false
-        $btnSubmitTest.Visible = $false
+        $LiveTimer.Stop(); $script:IsFreeHandActive = $false; $script:IsTestRunning = $false
+		$pnlConfig.Invalidate($true); $btnFreeHand.Invalidate(); $lblMaster.Visible = $true
+        $btnCopyMaster.Visible = $true; $btnPasteMaster.Visible = $true; $btnClearMaster.Visible = $true
+        $lblLiveStats.Visible = $false; $lblTimerDisplay.Visible = $false; $btnStartFreeHand.Visible = $false; $btnSubmitTest.Visible = $false
         return
     }
-
-    $script:IsFreeHandActive = $true
-    $script:IsTestRunning = $false
-	$pnlConfig.Invalidate($true)
-    $btnFreeHand.Invalidate()
-    
-    $txtMaster.Text = ""
-    $txtMaster.ReadOnly = $true 
-    $lblMaster.Visible = $false
-    
-    $btnCopyMaster.Visible = $false
-    $btnPasteMaster.Visible = $false
-    $btnClearMaster.Visible = $false
-    
-    $lblLiveStats.Visible = $true
-    $lblTimerDisplay.Visible = $true
-    $btnStartFreeHand.Visible = $true
-    $btnSubmitTest.Visible = $false
-    
+    $script:IsFreeHandActive = $true; $script:IsTestRunning = $false
+	$pnlConfig.Invalidate($true); $btnFreeHand.Invalidate()
+    $txtMaster.Text = ""; $txtMaster.ReadOnly = $true; $lblMaster.Visible = $false
+    $btnCopyMaster.Visible = $false; $btnPasteMaster.Visible = $false; $btnClearMaster.Visible = $false
+    $lblLiveStats.Visible = $true; $lblTimerDisplay.Visible = $true; $btnStartFreeHand.Visible = $true; $btnSubmitTest.Visible = $false
     $lblTimerDisplay.Text = "WAITING"
     $lblLiveStats.Text = "Strokes: 0  |  Speed: 0.0 WPM  |  Backspaces: 0"
 })
 
 $btnStartFreeHand.Add_Click({
-    # --- Validate Master File if Comparison Mode is Active ---
     if ($script:AppMode -eq "Comparison") {
         if ([string]::IsNullOrWhiteSpace($txtPath.Text) -or -not (Test-Path $txtPath.Text)) {
             [System.Windows.Forms.MessageBox]::Show("Comparison Mode requires a Master File. Please browse and select your Master File at the top before starting the test.", "Master File Required", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
             return
         }
     }
-    # --------------------------------------------------------------
-
     $duration = 10.0
     if (![double]::TryParse($txtTime.Text, [ref]$duration) -or $duration -le 0) { $duration = 10.0 }
-    
-    $script:FreeHandTotalSeconds = $duration * 60
-    $script:FreeHandSecondsLeft = $script:FreeHandTotalSeconds
-    $btnStartFreeHand.Visible = $false
-    $script:CountdownSeconds = 3
-    $script:IsTestRunning = $false
-    $lblTimerDisplay.Text = "Starts in 3..."
-    
-    $txtMaster.Text = ""
-    $txtMaster.ReadOnly = $true
-    $script:BackspaceCount = 0
-    $LiveTimer.Start()
+    $script:FreeHandTotalSeconds = $duration * 60; $script:FreeHandSecondsLeft = $script:FreeHandTotalSeconds
+    $btnStartFreeHand.Visible = $false; $script:CountdownSeconds = 3; $script:IsTestRunning = $false; $lblTimerDisplay.Text = "Starts in 3..."
+    $txtMaster.Text = ""; $txtMaster.ReadOnly = $true; $script:BackspaceCount = 0; $LiveTimer.Start()
 })
 
 $btnCalc.Add_Click({
     if ($script:IsTestRunning) { return }
-    
-    # 1. Instantly disable the button so they can't double-click it
     $btnCalc.Enabled = $false
-    
     try {
         $duration = 10.0
         if (![double]::TryParse($txtTime.Text, [ref]$duration) -or $duration -le 0) { $duration = 10.0 }
@@ -1642,9 +1507,7 @@ $btnCalc.Add_Click({
         $boxText = $txtMaster.Text.Trim()
 
         if ($script:AppMode -eq "Dictionary") {
-            if (-not [string]::IsNullOrWhiteSpace($boxText)) {
-                $typedText = $boxText
-            } else {
+            if (-not [string]::IsNullOrWhiteSpace($boxText)) { $typedText = $boxText } else {
                 if ([string]::IsNullOrWhiteSpace($txtPath.Text) -or -not (Test-Path $txtPath.Text)) {
                     [System.Windows.Forms.MessageBox]::Show("Please select a Target File or paste text below.", "Validation")
                     return
@@ -1654,7 +1517,6 @@ $btnCalc.Add_Click({
             }
             $txtOutput.Text = "`r`n  Initializing evaluation engine..."
             [System.Windows.Forms.Application]::DoEvents()
-            
             $script:LastScale = 2.0 
             [array]$errorsArray = Run-StandaloneEngine -TextData $typedText
         } else {
@@ -1669,117 +1531,77 @@ $btnCalc.Add_Click({
             $rawText = Get-Content $txtPath.Text -Raw -Encoding UTF8
             $masterTextFile = if ($null -ne $rawText) { $rawText -replace "`r`n", "`n" } else { "" }
             $typedText = $boxText
-            
             $script:LastScale = 2.0
             [array]$errorsArray = Run-ComparisonEngine -TypedText $typedText -MasterText $masterTextFile
         }
 
-        # --- Execute Anti-Spam Check ---
         $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
-        
         $script:LastGrossStrokes = $typedText.Length - $spamResult.SpamStrokes
         if ($script:LastGrossStrokes -lt 0) { $script:LastGrossStrokes = 0 }
         $script:LastGrossWords = $script:LastGrossStrokes / 5.0
-
         $script:CurrentErrorObjects = $spamResult.FinalErrors
         $script:IgnoredErrorIndices = @()
-        $script:LastDuration = $duration
-        $script:HasRun = $true
+        $script:LastDuration = $duration; $script:HasRun = $true
 
-        Invoke-RenderScoreboard
-        Invoke-HighlightTextBoxErrors
-        
-    } finally {
-        # 2. Re-enable the button no matter what happens (even if it hits a 'return' above)
-        $btnCalc.Enabled = $true
-    }
+        Invoke-RenderScoreboard; Invoke-HighlightTextBoxErrors
+    } finally { $btnCalc.Enabled = $true }
 })
 
-# Dynamic Window Size Event Handler
+# Recalculates sizes and positions of UI elements when window resizes
 function Invoke-UpdateLayout {
     if ($form.WindowState -ne [System.Windows.Forms.FormWindowState]::Minimized) {
         $form.SuspendLayout()
-
         $newW = $form.ClientSize.Width - 60
         if ($newW -lt 100) { $newW = 100 }
 
-        $pnlConfig.Width = $newW
-        $pnlMaster.Width = $newW
-        $btnCalc.Width = $newW
-        $pnlOutput.Width = $newW
+        $pnlConfig.Left = 30; $pnlConfig.Width = $newW
+        $pnlMaster.Left = 30; $pnlMaster.Width = $newW
+        $btnCalc.Left = 30; $btnCalc.Width = $newW
+        $pnlOutput.Left = 30; $pnlOutput.Width = $newW
 
         $btnBrowse.Left = $pnlConfig.Width - $btnBrowse.Width - 15
-        $btnToggleEngine.Left = $btnBrowse.Left - $btnToggleEngine.Width - 15
-        $btnToggleEngine.Top = 20
+        $btnToggleEngine.Left = $btnBrowse.Left - $btnToggleEngine.Width - 15; $btnToggleEngine.Top = 20
         $txtPath.Width = $btnToggleEngine.Left - $txtPath.Left - 15
-
         $remainingHeight = $form.ClientSize.Height - $pnlMaster.Top - 90 
         if ($remainingHeight -lt 300) { $remainingHeight = 300 }
         $pnlMaster.Height = [int]($remainingHeight * 0.45)
         
-        $btnSubmitTest.Width = 100
-        $btnSubmitTest.Height = 32
-        $btnSubmitTest.Top = 12
+        $btnSubmitTest.Width = 100; $btnSubmitTest.Height = 32; $btnSubmitTest.Top = 12
         $btnSubmitTest.Left = $pnlMaster.Width - $btnSubmitTest.Width - 20
-
-        $lblTimerDisplay.Top = 10
-        $lblTimerDisplay.Width = 160
-        $lblTimerDisplay.Height = 35
+        $lblTimerDisplay.Top = 10; $lblTimerDisplay.Width = 160; $lblTimerDisplay.Height = 35
         $lblTimerDisplay.Left = $btnSubmitTest.Left - $lblTimerDisplay.Width - 5
+        $lblLiveStats.Top = 22; $lblLiveStats.Left = 20; $lblLiveStats.Width = $lblTimerDisplay.Left - $lblLiveStats.Left - 10
 
-        $lblLiveStats.Top = 22
-        $lblLiveStats.Left = 20
-        $lblLiveStats.Width = $lblTimerDisplay.Left - $lblLiveStats.Left - 10
+        $btnStartFreeHand.Width = 280; $btnStartFreeHand.Height = 60
+        $btnStartFreeHand.Left = ($pnlMaster.Width - $btnStartFreeHand.Width) / 2; $btnStartFreeHand.Top = ($pnlMaster.Height - $btnStartFreeHand.Height) / 2
 
-        $btnStartFreeHand.Width = 280
-        $btnStartFreeHand.Height = 60
-        $btnStartFreeHand.Left = ($pnlMaster.Width - $btnStartFreeHand.Width) / 2
-        $btnStartFreeHand.Top = ($pnlMaster.Height - $btnStartFreeHand.Height) / 2
-
-        $btnCopyMaster.Width = 35
-        $btnCopyMaster.Height = 24
-        $btnPasteMaster.Width = 35
-        $btnPasteMaster.Height = 24
-        $btnClearMaster.Width = 35
-        $btnClearMaster.Height = 24
+        $btnCopyMaster.Width = 35; $btnCopyMaster.Height = 24
+        $btnPasteMaster.Width = 35; $btnPasteMaster.Height = 24
+        $btnClearMaster.Width = 35; $btnClearMaster.Height = 24
 
         if ($script:IsFreeHandActive) {
-            $btnCopyMaster.Visible = $false
-            $btnPasteMaster.Visible = $false
-            $btnClearMaster.Visible = $false
+            $btnCopyMaster.Visible = $false; $btnPasteMaster.Visible = $false; $btnClearMaster.Visible = $false
         } else {
-            $btnCopyMaster.Visible = $true
-            $btnPasteMaster.Visible = $true
-            $btnClearMaster.Visible = $true
+            $btnCopyMaster.Visible = $true; $btnPasteMaster.Visible = $true; $btnClearMaster.Visible = $true
             $btnClearMaster.Left = $pnlMaster.Width - $btnClearMaster.Width - 20
             $btnPasteMaster.Left = $btnClearMaster.Left - $btnPasteMaster.Width - 8
             $btnCopyMaster.Left = $btnPasteMaster.Left - $btnCopyMaster.Width - 8
         }
-        $btnCopyMaster.Top = 13
-        $btnPasteMaster.Top = 13
-        $btnClearMaster.Top = 13
-
-        if ($script:IsFreeHandActive) {
-            $lblMaster.Width = $pnlMaster.Width - 40
-        } else {
-            $lblMaster.Width = $btnCopyMaster.Left - $lblMaster.Left - 10
-        }
+        $btnCopyMaster.Top = 13; $btnPasteMaster.Top = 13; $btnClearMaster.Top = 13
+        if ($script:IsFreeHandActive) { $lblMaster.Width = $pnlMaster.Width - 40 } else { $lblMaster.Width = $btnCopyMaster.Left - $lblMaster.Left - 10 }
 
         $txtMaster.Width = $pnlMaster.Width - ($txtMaster.Left * 2)
         $txtMaster.Height = $pnlMaster.Height - $txtMaster.Top - 15
         $btnCalc.Top = $pnlMaster.Top + $pnlMaster.Height + 15
         $pnlOutput.Top = $btnCalc.Top + $btnCalc.Height + 15
         $pnlOutput.Height = $form.ClientSize.Height - $pnlOutput.Top - 45
-        $lblVersion.Left = $form.ClientSize.Width - $lblVersion.Width - 30
-        $lblVersion.Top = $form.ClientSize.Height - $lblVersion.Height - 15
+        $lblVersion.Left = $form.ClientSize.Width - $lblVersion.Width - 30; $lblVersion.Top = $form.ClientSize.Height - $lblVersion.Height - 15
 
         $scale = $form.Width / 850.0
         $newOutputSize = [float]([math]::Max(10.0, 10.0 + (($scale - 1) * 2)))
         if ([math]::Abs($txtOutput.Font.Size - $newOutputSize) -gt 0.5) { $txtOutput.Font = New-Object System.Drawing.Font("Consolas", $newOutputSize) }
-
         $newMasterSize = [float]([math]::Max(13.5, 13.5 + (($scale - 1) * 2.25)))
         if ([math]::Abs($txtMaster.Font.Size - $newMasterSize) -gt 0.5) { $txtMaster.Font = New-Object System.Drawing.Font("Segoe UI", $newMasterSize) }
-        
         $newBtnSize = [float]([math]::Max(10.0, 10.0 + (($scale - 1) * 1.5)))
         if ([math]::Abs($btnCalc.Font.Size - $newBtnSize) -gt 0.5) { $btnCalc.Font = New-Object System.Drawing.Font("Segoe UI", $newBtnSize, [System.Drawing.FontStyle]::Bold) }
         
@@ -1791,95 +1613,50 @@ function Invoke-UpdateLayout {
 
 $btnToggleUnit.Add_Click({
     if ($script:IsTestRunning) { return }
-    if ($script:UnitMode -eq "Strokes") { $script:UnitMode = "Words"; $btnToggleUnit.Text = "Data: Words" } 
-    else { $script:UnitMode = "Strokes"; $btnToggleUnit.Text = "Data: Strokes" }
-    $btnToggleUnit.Invalidate()
-    Invoke-RenderScoreboard
+    if ($script:UnitMode -eq "Strokes") { $script:UnitMode = "Words"; $btnToggleUnit.Text = "Data: Words" } else { $script:UnitMode = "Strokes"; $btnToggleUnit.Text = "Data: Strokes" }
+    $btnToggleUnit.Invalidate(); Invoke-RenderScoreboard
 })
 
-# Custom Ignored Exceptions Selection Canvas
 $btnIgnore.Add_Click({
     if ($script:IsTestRunning) { return }
-    if (-not $script:HasRun -or $script:CurrentErrorObjects.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show("Please execute a run analysis first and ensure errors are detected before setting exclusions.", "Action Required")
-        return
-    }
+    if (-not $script:HasRun -or $script:CurrentErrorObjects.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("Please execute a run analysis first and ensure errors are detected before setting exclusions.", "Action Required"); return }
     
     $dialog = New-Object System.Windows.Forms.Form
-    $dialog.Text = "Select System Errors to Exclude"
-    $dialog.Size = New-Object System.Drawing.Size(600, 480)
-    $dialog.MinimumSize = New-Object System.Drawing.Size(500, 400)
-    $dialog.StartPosition = "CenterParent"
-    $dialog.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
-    $dialog.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#F1F5F9")
-    $dialog.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
-    $dialog.MaximizeBox = $false
-    $dialog.MinimizeBox = $false
+    $dialog.Text = "Select System Errors to Exclude"; $dialog.Size = New-Object System.Drawing.Size(600, 480); $dialog.MinimumSize = New-Object System.Drawing.Size(500, 400); $dialog.StartPosition = "CenterParent"; $dialog.Font = New-Object System.Drawing.Font("Segoe UI", 9.5); $dialog.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#F1F5F9"); $dialog.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog; $dialog.MaximizeBox = $false; $dialog.MinimizeBox = $false
 
     $lblMsg = New-Object System.Windows.Forms.Label
-    $lblMsg.Text = "Check the specific error components you wish to ignore from compliance scores:"
-    $lblMsg.Location = New-Object System.Drawing.Point(20, 15)
-    $lblMsg.Size = New-Object System.Drawing.Size(540, 25)
-    $lblMsg.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#334155")
+    $lblMsg.Text = "Check the specific error components you wish to ignore from compliance scores:"; $lblMsg.Location = New-Object System.Drawing.Point(20, 15); $lblMsg.Size = New-Object System.Drawing.Size(540, 25); $lblMsg.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#334155")
     $dialog.Controls.Add($lblMsg)
 
     $clb = New-Object System.Windows.Forms.CheckedListBox
-    $clb.Location = New-Object System.Drawing.Point(20, 50)
-    $clb.Size = New-Object System.Drawing.Size(545, 310)
-    $clb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-    $clb.CheckOnClick = $true
-    $clb.BackColor = [System.Drawing.Color]::White
-    $clb.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#0F172A")
+    $clb.Location = New-Object System.Drawing.Point(20, 50); $clb.Size = New-Object System.Drawing.Size(545, 310); $clb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle; $clb.CheckOnClick = $true; $clb.BackColor = [System.Drawing.Color]::White; $clb.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#0F172A")
 
     for ($i = 0; $i -lt $script:CurrentErrorObjects.Count; $i++) {
-        $errNum = $i + 1
-        $displayTxt = "[$errNum] $($script:CurrentErrorObjects[$i].Text)"
-        [void]$clb.Items.Add($displayTxt)
+        $errNum = $i + 1; $displayTxt = "[$errNum] $($script:CurrentErrorObjects[$i].Text)"; [void]$clb.Items.Add($displayTxt)
         if ($script:IgnoredErrorIndices -contains $errNum) { $clb.SetItemChecked($i, $true) }
     }
     $dialog.Controls.Add($clb)
 
     $btnOK = New-Object System.Windows.Forms.Button
-    $btnOK.Text = "Apply Exclusions"
-    $btnOK.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $btnOK.Location = New-Object System.Drawing.Point(300, 385)
-    $btnOK.Size = New-Object System.Drawing.Size(150, 32)
-    $btnOK.FlatStyle = [System.Windows.Forms.FlatStyle]::System
+    $btnOK.Text = "Apply Exclusions"; $btnOK.DialogResult = [System.Windows.Forms.DialogResult]::OK; $btnOK.Location = New-Object System.Drawing.Point(300, 385); $btnOK.Size = New-Object System.Drawing.Size(150, 32); $btnOK.FlatStyle = [System.Windows.Forms.FlatStyle]::System
     $dialog.Controls.Add($btnOK)
 
     $btnCancel = New-Object System.Windows.Forms.Button
-    $btnCancel.Text = "Cancel"
-    $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $btnCancel.Location = New-Object System.Drawing.Point(460, 385)
-    $btnCancel.Size = New-Object System.Drawing.Size(105, 32)
-    $btnCancel.FlatStyle = [System.Windows.Forms.FlatStyle]::System
+    $btnCancel.Text = "Cancel"; $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel; $btnCancel.Location = New-Object System.Drawing.Point(460, 385); $btnCancel.Size = New-Object System.Drawing.Size(105, 32); $btnCancel.FlatStyle = [System.Windows.Forms.FlatStyle]::System
     $dialog.Controls.Add($btnCancel)
 
-    $dialog.AcceptButton = $btnOK
-    $dialog.CancelButton = $btnCancel
+    $dialog.AcceptButton = $btnOK; $dialog.CancelButton = $btnCancel
 
     if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         $newIgnored = @()
-        for ($i = 0; $i -lt $clb.Items.Count; $i++) {
-            if ($clb.GetItemChecked($i)) { $newIgnored += ($i + 1) }
-        }
+        for ($i = 0; $i -lt $clb.Items.Count; $i++) { if ($clb.GetItemChecked($i)) { $newIgnored += ($i + 1) } }
         $script:IgnoredErrorIndices = $newIgnored
-        Invoke-RenderScoreboard
-        Invoke-HighlightTextBoxErrors
+        Invoke-RenderScoreboard; Invoke-HighlightTextBoxErrors
     }
     $dialog.Dispose()
 })
 
-# Display Event Handlers
-$form.Add_Resize({ 
-    Invoke-UpdateLayout 
-    $form.Invalidate($true)
-})
-
-$form.Add_Shown({ 
-    Invoke-UpdateLayout
-    $form.Invalidate($true)
-    $form.Refresh()
-})
-
+# Boot up logic mapping
+$form.Add_Resize({ Invoke-UpdateLayout; $form.Invalidate($true) })
+$form.Add_Shown({ Invoke-UpdateLayout; $form.Invalidate($true); $form.Refresh() })
 [void]$form.ShowDialog()
