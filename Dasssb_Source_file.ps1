@@ -297,65 +297,75 @@ function Run-ComparisonEngine {
         }
         
         if ($bestM -ne -1 -and $bestT -ne -1) {
+            $deltaM = $bestM - $m
+            $deltaT = $bestT - $t
             
-            if (($bestM - $m -eq 1) -and ($bestT - $t -eq 1)) {
-                $errLen = $typedMatches[$t].Length
+            # Group actual substitution chunks as sequential independent Mismatches
+            $mismatchesCount = [math]::Min($deltaM, $deltaT)
+            for ($i = 0; $i -lt $mismatchesCount; $i++) {
+                $currT = $t + $i
+                $currM = $m + $i
+                $errLen = $typedMatches[$currT].Length
                 [void]$errorList.Add([PSCustomObject]@{ 
                     Type = "Mismatch"
-                    Text = "Typo/Case Error: '$($typedMatches[$t].Value)' (Expected: '$($masterMatches[$m].Value)')"
+                    Text = "Typo/Case Error: '$($typedMatches[$currT].Value)' (Expected: '$($masterMatches[$currM].Value)')"
                     StrokePen = 5
                     WordPen = 1
                     DisplayErrorCount = 5
-                    Index = $typedMatches[$t].Index
+                    Index = $typedMatches[$currT].Index
                     Length = $errLen 
                 })
-            } else {
-                # Handle skipped words (Omissions)
-                if ($bestM -gt $m) {
-                    $skippedWordsCount = $bestM - $m
-                    $skippedArray = @()
-                    for ($i = 0; $i -lt $skippedWordsCount; $i++) { $skippedArray += $masterMatches[$m + $i].Value }
-                    $skippedPhrase = $skippedArray -join " "
-                    
-                    # Calculate exact position in typed text to anchor the blue marker
-                    $omissionIdx = if ($t -lt $typedMatches.Count) { $typedMatches[$t].Index } else { [math]::Max(0, $TypedText.Length - 1) }
-                    $omissionLen = if ($TypedText.Length -gt 0) { 1 } else { 0 }
-                    
-                    [void]$errorList.Add([PSCustomObject]@{ 
-                        Type = "Omission"
-                        Text = "Omission: Skipped $skippedWordsCount word(s) -> '$skippedPhrase'"
-                        StrokePen = (5 * $skippedWordsCount) 
-                        WordPen = $skippedWordsCount         
-                        DisplayErrorCount = (5 * $skippedWordsCount)
-                        Index = $omissionIdx
-                        Length = $omissionLen 
-                    })
-                }
-                
-                # Handle extra typed words (Repeated lines / Insertions GROUPED)
-                if ($bestT -gt $t) {
-                    $extraWordsCount = $bestT - $t
-                    $extraArray = @()
-                    for ($extra = 0; $extra -lt $extraWordsCount; $extra++) {
-                        $extraArray += $typedMatches[$t + $extra].Value
-                    }
-                    $extraPhrase = $extraArray -join " "
-                    
-                    $startIdx = $typedMatches[$t].Index
-                    $endIdx = $typedMatches[$bestT - 1].Index + $typedMatches[$bestT - 1].Length
-                    $totalLen = $endIdx - $startIdx
-                    
-                    [void]$errorList.Add([PSCustomObject]@{ 
-                        Type = "Insertion"
-                        Text = "Extra Words (Repeated or incorrect line): Added $extraWordsCount word(s) -> '$extraPhrase'"
-                        StrokePen = (5 * $extraWordsCount)
-                        WordPen = $extraWordsCount
-                        DisplayErrorCount = (5 * $extraWordsCount)
-                        Index = $startIdx
-                        Length = $totalLen 
-                    })
-                }
             }
+            
+            # Advance indices past processed mismatches
+            $m += $mismatchesCount
+            $t += $mismatchesCount
+            
+            # Handle any remaining structural skipped words (True Omissions)
+            if ($bestM -gt $m) {
+                $skippedWordsCount = $bestM - $m
+                $skippedArray = @()
+                for ($i = 0; $i -lt $skippedWordsCount; $i++) { $skippedArray += $masterMatches[$m + $i].Value }
+                $skippedPhrase = $skippedArray -join " "
+                
+                $omissionIdx = if ($t -lt $typedMatches.Count) { $typedMatches[$t].Index } else { [math]::Max(0, $TypedText.Length - 1) }
+                $omissionLen = if ($TypedText.Length -gt 0) { 1 } else { 0 }
+                
+                [void]$errorList.Add([PSCustomObject]@{ 
+                    Type = "Omission"
+                    Text = "Omission: Skipped $skippedWordsCount word(s) -> '$skippedPhrase'"
+                    StrokePen = (5 * $skippedWordsCount) 
+                    WordPen = $skippedWordsCount         
+                    DisplayErrorCount = (5 * $skippedWordsCount)
+                    Index = $omissionIdx
+                    Length = $omissionLen 
+                })
+            }
+            
+            # Handle any remaining structural additions (True Insertions)
+            if ($bestT -gt $t) {
+                $extraWordsCount = $bestT - $t
+                $extraArray = @()
+                for ($extra = 0; $extra -lt $extraWordsCount; $extra++) {
+                    $extraArray += $typedMatches[$t + $extra].Value
+                }
+                $extraPhrase = $extraArray -join " "
+                
+                $startIdx = $typedMatches[$t].Index
+                $endIdx = $typedMatches[$bestT - 1].Index + $typedMatches[$bestT - 1].Length
+                $totalLen = $endIdx - $startIdx
+                
+                [void]$errorList.Add([PSCustomObject]@{ 
+                    Type = "Insertion"
+                    Text = "Extra Words (Repeated or incorrect line): Added $extraWordsCount word(s) -> '$extraPhrase'"
+                    StrokePen = (5 * $extraWordsCount)
+                    WordPen = $extraWordsCount
+                    DisplayErrorCount = (5 * $extraWordsCount)
+                    Index = $startIdx
+                    Length = $totalLen 
+                })
+            }
+            
             $m = $bestM
             $t = $bestT
         } else {
