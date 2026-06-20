@@ -1,6 +1,7 @@
 # DSSSB LDC Typing Evaluation Simulator
 # Author: Verma_Ji
 # Description: A GUI-based typing test evaluator that calculates strokes, WPM, and errors.
+# versionNo. 3.0
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -38,6 +39,7 @@ $script:FreeHandSecondsLeft = 0
 $script:FreeHandTotalSeconds = 0
 $script:CountdownSeconds = 0
 $script:BackspaceCount = 0
+$script:LiveMasterTextCache = ""
 
 # Tooltip settings for UI elements
 $script:balloonTip = New-Object System.Windows.Forms.ToolTip
@@ -58,7 +60,6 @@ $script:Base64TypingSound = ""
 
 # Paste graphic asset Base64 here:
 $script:Base64Logo = ""
-
 
 # =======================================================================================
 # Audio Players Setup
@@ -634,17 +635,23 @@ function Run-StandaloneEngine {
     return @($errorList.ToArray()) 
 }
 
-# Text Engine 3: Anti-Spam Filter (Flags 20+ chars as spam but drops all Gibberish logic)
+# Text Engine 3: Anti-Spam Filter (Flags 30+ chars as spam but drops all Gibberish logic)
 function Invoke-AntiSpamFilter {
-    param([string]$InputText, [array]$EngineErrors)
+    param([string]$InputText, [array]$EngineErrors, [string]$MasterText = "")
     
     $spamStrokes = 0
     $spamList = New-Object System.Collections.ArrayList
     $filteredErrors = New-Object System.Collections.ArrayList
     
-    # Catch massive strings without spaces (20+ chars)
-    $possibleSpamMatches = [regex]::Matches($InputText, "\S{20,}")
+    # Catch massive strings without spaces (strictly more than 30 chars)
+    $possibleSpamMatches = [regex]::Matches($InputText, "\S{31,}")
     $actualSpamMatches = New-Object System.Collections.ArrayList
+
+    # Extract clean array of master reference words if active in Comparison Mode
+    $masterWords = @()
+    if ($script:AppMode -eq "Comparison" -and -not [string]::IsNullOrWhiteSpace($MasterText)) {
+        $masterWords = [regex]::Matches($MasterText, "\S+") | ForEach-Object { $_.Value }
+    }
 
     foreach ($match in $possibleSpamMatches) {
         $val = $match.Value 
@@ -657,6 +664,11 @@ function Invoke-AntiSpamFilter {
         
         # 3. Allow merged words caused by a missed space after punctuation (e.g., "environment,telecom")
         if ($val -match "[a-zA-Z0-9][.,!?;:/][a-zA-Z0-9]") { continue }
+
+        # 4. Check if word is verified inside original master paragraph (>30 chars case-sensitive check)
+        if ($script:AppMode -eq "Comparison" -and $val.Length -gt 30) {
+            if ($masterWords -ccontains $val) { continue }
+        }
 
         [void]$actualSpamMatches.Add($match)
     }
@@ -1227,7 +1239,7 @@ $pnlOutput.Controls.Add($txtOutput)
 
 # Easter Egg Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
-$lblVersion.Text = "DoN'T cLiCk Me"
+$lblVersion.Text = "Ver 3.0"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblVersion.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#000000") 
 $lblVersion.BackColor = [System.Drawing.Color]::Transparent
@@ -1341,7 +1353,7 @@ $LiveTimer.Interval = 1000
 function Invoke-UpdateLiveStats {
     if (-not $script:IsFreeHandActive) { return }
     $rawText = $txtMaster.Text
-    $tempSpam = Invoke-AntiSpamFilter -InputText $rawText -EngineErrors @()
+    $tempSpam = Invoke-AntiSpamFilter -InputText $rawText -EngineErrors @() -MasterText $script:LiveMasterTextCache
     $strokes = $rawText.Length - $tempSpam.SpamStrokes
     if ($strokes -lt 0) { $strokes = 0 }
 
@@ -1377,10 +1389,11 @@ function Invoke-EndFreeHandTest {
         $masterTextFile = if ($null -ne $rawText) { $rawText -replace "`r`n", "`n" } else { "" }
         [array]$errorsArray = Run-ComparisonEngine -TypedText $typedText -MasterText $masterTextFile
     } else {
+        $masterTextFile = ""
         [array]$errorsArray = Run-StandaloneEngine -TextData $typedText
     }
     
-    $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
+    $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray -MasterText $masterTextFile
     $script:LastRawTextLength = $typedText.Length
     
     $script:CurrentErrorObjects = $spamResult.FinalErrors
@@ -1533,6 +1546,11 @@ $btnStartFreeHand.Add_Click({
             [System.Windows.Forms.MessageBox]::Show("Comparison Mode requires a Master File. Please browse and select your Master File at the top before starting the test.", "Master File Required", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
             return
         }
+        try {
+            $script:LiveMasterTextCache = (Get-Content $txtPath.Text -Raw -Encoding UTF8) -replace "`r`n", "`n"
+        } catch {
+            $script:LiveMasterTextCache = ""
+        }
     }
     $duration = 10.0
     if (![double]::TryParse($txtTime.Text, [ref]$duration) -or $duration -le 0) { $duration = 10.0 }
@@ -1562,6 +1580,7 @@ $btnCalc.Add_Click({
             $txtOutput.Text = "`r`n  Initializing evaluation engine..."
             [System.Windows.Forms.Application]::DoEvents()
             $script:LastScale = 2.0 
+            $masterTextFile = ""
             [array]$errorsArray = Run-StandaloneEngine -TextData $typedText
         } else {
             if ([string]::IsNullOrWhiteSpace($txtPath.Text) -or -not (Test-Path $txtPath.Text)) {
@@ -1579,7 +1598,7 @@ $btnCalc.Add_Click({
             [array]$errorsArray = Run-ComparisonEngine -TypedText $typedText -MasterText $masterTextFile
         }
 
-        $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray
+        $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray -MasterText $masterTextFile
         $script:LastRawTextLength = $typedText.Length
         
         $script:CurrentErrorObjects = $spamResult.FinalErrors
