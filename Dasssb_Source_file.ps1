@@ -1,7 +1,7 @@
 # DSSSB LDC Typing Evaluation Simulator
 # Author: Verma_Ji
 # Description: A GUI-based typing test evaluator that calculates strokes, WPM, and errors.
-# versionNo. 3.0
+# versionNo. 3.2 (Layout Clipping & Scaling Fix Patch)
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -1050,6 +1050,8 @@ $btnCopyMaster.BackColor = [System.Drawing.Color]::Transparent
 $btnCopyMaster.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnCopyMaster.Font = New-Object System.Drawing.Font("Segoe UI Emoji", 10)
 $btnCopyMaster.Tag = "normal"
+$btnCopyMaster.Width = 35
+$btnCopyMaster.Height = 24
 $btnCopyMaster.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
 $btnCopyMaster.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
 $btnCopyMaster.Add_Paint({
@@ -1074,6 +1076,8 @@ $btnPasteMaster.BackColor = [System.Drawing.Color]::Transparent
 $btnPasteMaster.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnPasteMaster.Font = New-Object System.Drawing.Font("Segoe UI Emoji", 10)
 $btnPasteMaster.Tag = "normal"
+$btnPasteMaster.Width = 35
+$btnPasteMaster.Height = 24
 $btnPasteMaster.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
 $btnPasteMaster.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
 $btnPasteMaster.Add_Paint({
@@ -1101,6 +1105,8 @@ $btnClearMaster.BackColor = [System.Drawing.Color]::Transparent
 $btnClearMaster.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnClearMaster.Font = New-Object System.Drawing.Font("Segoe UI Emoji", 9)
 $btnClearMaster.Tag = "normal"
+$btnClearMaster.Width = 35
+$btnClearMaster.Height = 24
 $btnClearMaster.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
 $btnClearMaster.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
 $btnClearMaster.Add_Paint({
@@ -1129,50 +1135,6 @@ $lblTimerDisplay.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
 $lblTimerDisplay.Visible = $false
 $pnlMaster.Controls.Add($lblTimerDisplay)
 
-$btnSubmitTest = New-Object System.Windows.Forms.Button
-$btnSubmitTest.Text = "Submit Early"
-$btnSubmitTest.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$btnSubmitTest.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnSubmitTest.FlatAppearance.BorderSize = 0
-$btnSubmitTest.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
-$btnSubmitTest.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Transparent
-$btnSubmitTest.BackColor = [System.Drawing.Color]::Transparent
-$btnSubmitTest.Cursor = [System.Windows.Forms.Cursors]::Hand
-$btnSubmitTest.Tag = "normal"
-$btnSubmitTest.Visible = $false
-$btnSubmitTest.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
-$btnSubmitTest.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
-$btnSubmitTest.Add_Paint({
-    param($sender, $e)
-    $fill = if ($sender.Tag -eq "hover") { "#EF4444" } else { "#DC2626" } 
-    Invoke-PaintRoundedCorners $sender $e 12 $null $fill
-    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
-    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.Color]::White, $flags)
-})
-$pnlMaster.Controls.Add($btnSubmitTest)
-
-$btnStartFreeHand = New-Object System.Windows.Forms.Button
-$btnStartFreeHand.Text = "START TYPING TEST"
-$btnStartFreeHand.Font = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
-$btnStartFreeHand.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnStartFreeHand.FlatAppearance.BorderSize = 0
-$btnStartFreeHand.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
-$btnStartFreeHand.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Transparent
-$btnStartFreeHand.BackColor = [System.Drawing.Color]::Transparent
-$btnStartFreeHand.Cursor = [System.Windows.Forms.Cursors]::Hand
-$btnStartFreeHand.Tag = "normal"
-$btnStartFreeHand.Visible = $false
-$btnStartFreeHand.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
-$btnStartFreeHand.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
-$btnStartFreeHand.Add_Paint({
-    param($sender, $e)
-    $fill = if ($sender.Tag -eq "hover") { "#16A34A" } else { "#22C55E" } 
-    Invoke-PaintRoundedCorners $sender $e 16 $null $fill
-    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
-    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.Color]::White, $flags)
-})
-$pnlMaster.Controls.Add($btnStartFreeHand)
-
 $txtMaster = New-Object System.Windows.Forms.RichTextBox
 $txtMaster.Multiline = $true
 $txtMaster.ScrollBars = "Vertical"
@@ -1191,7 +1153,8 @@ $txtMaster.Add_KeyDown({
 })
 $pnlMaster.Controls.Add($txtMaster)
 
-# 4. Run Analysis Button Setup
+
+# 4. Form Actions & Flow Controllers (Unified Bottom Layout Footprint)
 $btnCalc = New-Object System.Windows.Forms.Button
 $btnCalc.Text = "Run Analysis"
 $btnCalc.Location = New-Object System.Drawing.Point(30, 495) 
@@ -1216,6 +1179,51 @@ $btnCalc.Add_Paint({
 })
 $form.Controls.Add($btnCalc)
 
+$btnSubmitTest = New-Object System.Windows.Forms.Button
+$btnSubmitTest.Text = "Submit Early"
+$btnSubmitTest.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$btnSubmitTest.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnSubmitTest.FlatAppearance.BorderSize = 0
+$btnSubmitTest.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
+$btnSubmitTest.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Transparent
+$btnSubmitTest.BackColor = [System.Drawing.Color]::Transparent
+$btnSubmitTest.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnSubmitTest.Tag = "normal"
+$btnSubmitTest.Visible = $false
+$btnSubmitTest.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
+$btnSubmitTest.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+$btnSubmitTest.Add_Paint({
+    param($sender, $e)
+    $fill = if ($sender.Tag -eq "hover") { "#EF4444" } else { "#DC2626" } 
+    Invoke-PaintRoundedCorners $sender $e 12 $null $fill
+    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
+    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.Color]::White, $flags)
+})
+$form.Controls.Add($btnSubmitTest)
+
+$btnStartFreeHand = New-Object System.Windows.Forms.Button
+$btnStartFreeHand.Text = "START TYPING TEST"
+$btnStartFreeHand.Font = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
+$btnStartFreeHand.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnStartFreeHand.FlatAppearance.BorderSize = 0
+$btnStartFreeHand.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
+$btnStartFreeHand.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Transparent
+$btnStartFreeHand.BackColor = [System.Drawing.Color]::Transparent
+$btnStartFreeHand.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnStartFreeHand.Tag = "normal"
+$btnStartFreeHand.Visible = $false
+$btnStartFreeHand.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
+$btnStartFreeHand.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+$btnStartFreeHand.Add_Paint({
+    param($sender, $e)
+    $fill = if ($sender.Tag -eq "hover") { "#16A34A" } else { "#22C55E" } 
+    Invoke-PaintRoundedCorners $sender $e 12 $null $fill
+    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
+    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.Color]::White, $flags)
+})
+$form.Controls.Add($btnStartFreeHand)
+
+
 # 5. Results & Output Console Area
 $pnlOutput = New-Object System.Windows.Forms.Panel
 $pnlOutput.Location = New-Object System.Drawing.Point(30, 560) 
@@ -1239,7 +1247,7 @@ $pnlOutput.Controls.Add($txtOutput)
 
 # Easter Egg Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
-$lblVersion.Text = "Ver 3.0"
+$lblVersion.Text = "Ver 3.2"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblVersion.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#000000") 
 $lblVersion.BackColor = [System.Drawing.Color]::Transparent
@@ -1372,11 +1380,13 @@ $txtMaster.Add_TextChanged({ if ($script:IsTestRunning) { Invoke-UpdateLiveStats
 
 function Invoke-EndFreeHandTest {
     $LiveTimer.Stop()
-    $txtMaster.ReadOnly = $true
-    $script:IsFreeHandActive = $false; $script:IsTestRunning = $false
-	$pnlConfig.Invalidate($true); $btnFreeHand.Invalidate(); $lblMaster.Visible = $true
-    $btnCopyMaster.Visible = $true; $btnPasteMaster.Visible = $true; $btnClearMaster.Visible = $true
-    $lblLiveStats.Visible = $false; $lblTimerDisplay.Visible = $false; $btnStartFreeHand.Visible = $false; $btnSubmitTest.Visible = $false
+    $txtMaster.ReadOnly = $true  
+    $script:IsTestRunning = $false
+    
+    # Hide operational loops, re-toggle the run summary actions
+    $btnSubmitTest.Visible = $false
+    $btnStartFreeHand.Visible = $false
+    $btnCalc.Visible = $true
     
     $txtOutput.Text = "`r`n  Evaluating typing test results..."
     [System.Windows.Forms.Application]::DoEvents()
@@ -1406,6 +1416,16 @@ function Invoke-EndFreeHandTest {
     
     Invoke-RenderScoreboard
     Invoke-HighlightTextBoxErrors
+
+    # Safeguard copy visibilities and refresh active form backgrounds
+    $btnCopyMaster.Visible = $true
+    $btnPasteMaster.Visible = $false
+    $btnClearMaster.Visible = $false
+    
+    Invoke-UpdateLayout
+    $pnlMaster.Refresh()
+    $pnlConfig.Invalidate($true)
+    $btnFreeHand.Invalidate()
 }
 
 $LiveTimer.Add_Tick({
@@ -1413,7 +1433,13 @@ $LiveTimer.Add_Tick({
         $script:CountdownSeconds--
         if ($script:CountdownSeconds -gt 0) { $lblTimerDisplay.Text = "Starts in $($script:CountdownSeconds)..." } else {
             $script:IsTestRunning = $true; $pnlConfig.Invalidate($true)
-            $txtMaster.ReadOnly = $false; $txtMaster.Focus(); $btnSubmitTest.Visible = $true; Invoke-UpdateLiveStats 
+            $txtMaster.ReadOnly = $false; $txtMaster.Focus()
+            
+            # Transition actions footprint
+            $btnStartFreeHand.Visible = $false
+            $btnSubmitTest.Visible = $true
+            $btnCalc.Visible = $false
+            Invoke-UpdateLiveStats 
         }
     } else {
         if ($script:FreeHandSecondsLeft -gt 0) { $script:FreeHandSecondsLeft--; Invoke-UpdateLiveStats } else {
@@ -1525,19 +1551,61 @@ function Invoke-RenderScoreboard {
 
 $btnFreeHand.Add_Click({
     if ($script:IsFreeHandActive) {
-        $LiveTimer.Stop(); $script:IsFreeHandActive = $false; $script:IsTestRunning = $false
-		$pnlConfig.Invalidate($true); $btnFreeHand.Invalidate(); $lblMaster.Visible = $true
-        $btnCopyMaster.Visible = $true; $btnPasteMaster.Visible = $true; $btnClearMaster.Visible = $true
-        $lblLiveStats.Visible = $false; $lblTimerDisplay.Visible = $false; $btnStartFreeHand.Visible = $false; $btnSubmitTest.Visible = $false
+        # EXITING FREE HAND MODE
+        $LiveTimer.Stop()
+        $script:IsFreeHandActive = $false
+        $script:IsTestRunning = $false
+        
+        $pnlConfig.Invalidate($true)
+        $btnFreeHand.Invalidate()
+        $lblMaster.Visible = $true
+        
+        $btnCopyMaster.Visible = $true
+        $btnPasteMaster.Visible = $true
+        $btnClearMaster.Visible = $true
+        
+        $lblLiveStats.Visible = $false
+        $lblTimerDisplay.Visible = $false
+        
+        # Reset Bottom Action Control Layout Visibilities
+        $btnStartFreeHand.Visible = $false
+        $btnSubmitTest.Visible = $false
+        $btnCalc.Visible = $true
+        
+        $txtMaster.ReadOnly = $false 
+        
+        Invoke-UpdateLayout
+        $pnlMaster.Refresh()
         return
     }
-    $script:IsFreeHandActive = $true; $script:IsTestRunning = $false
-	$pnlConfig.Invalidate($true); $btnFreeHand.Invalidate()
-    $txtMaster.Text = ""; $txtMaster.ReadOnly = $true; $lblMaster.Visible = $false
-    $btnCopyMaster.Visible = $false; $btnPasteMaster.Visible = $false; $btnClearMaster.Visible = $false
-    $lblLiveStats.Visible = $true; $lblTimerDisplay.Visible = $true; $btnStartFreeHand.Visible = $true; $btnSubmitTest.Visible = $false
+    
+    # ENTERING FREE HAND MODE
+    $script:IsFreeHandActive = $true
+    $script:IsTestRunning = $false
+    $pnlConfig.Invalidate($true)
+    $btnFreeHand.Invalidate()
+    
+    $txtMaster.Text = ""
+    $txtMaster.ReadOnly = $true  
+    $lblMaster.Visible = $false
+    
+    $btnCopyMaster.Visible = $true
+    $btnPasteMaster.Visible = $false
+    $btnClearMaster.Visible = $false
+    
+    $lblLiveStats.Visible = $true
+    $lblTimerDisplay.Visible = $true
+    
+    # Position operational action frames
+    $btnStartFreeHand.Visible = $true
+    $btnSubmitTest.Visible = $false
+    $btnCalc.Visible = $false
+    
     $lblTimerDisplay.Text = "WAITING"
     $lblLiveStats.Text = "Strokes: 0  |  Speed: 0.0 WPM  |  Backspaces: 0"
+    
+    Invoke-UpdateLayout
+    $pnlMaster.Refresh()
 })
 
 $btnStartFreeHand.Add_Click({
@@ -1618,7 +1686,6 @@ function Invoke-UpdateLayout {
 
         $pnlConfig.Left = 30; $pnlConfig.Width = $newW
         $pnlMaster.Left = 30; $pnlMaster.Width = $newW
-        $btnCalc.Left = 30; $btnCalc.Width = $newW
         $pnlOutput.Left = 30; $pnlOutput.Width = $newW
 
         $btnBrowse.Left = $pnlConfig.Width - $btnBrowse.Width - 15
@@ -1628,33 +1695,52 @@ function Invoke-UpdateLayout {
         if ($remainingHeight -lt 300) { $remainingHeight = 300 }
         $pnlMaster.Height = [int]($remainingHeight * 0.45)
         
-        $btnSubmitTest.Width = 100; $btnSubmitTest.Height = 32; $btnSubmitTest.Top = 12
-        $btnSubmitTest.Left = $pnlMaster.Width - $btnSubmitTest.Width - 20
-        $lblTimerDisplay.Top = 10; $lblTimerDisplay.Width = 160; $lblTimerDisplay.Height = 35
-        $lblTimerDisplay.Left = $btnSubmitTest.Left - $lblTimerDisplay.Width - 5
-        $lblLiveStats.Top = 22; $lblLiveStats.Left = 20; $lblLiveStats.Width = $lblTimerDisplay.Left - $lblLiveStats.Left - 10
-
-        $btnStartFreeHand.Width = 280; $btnStartFreeHand.Height = 60
-        $btnStartFreeHand.Left = ($pnlMaster.Width - $btnStartFreeHand.Width) / 2; $btnStartFreeHand.Top = ($pnlMaster.Height - $btnStartFreeHand.Height) / 2
-
+        # FIX: Hard-lock utility button dimensions strictly to 35x24 to stop DPI expansion
         $btnCopyMaster.Width = 35; $btnCopyMaster.Height = 24
         $btnPasteMaster.Width = 35; $btnPasteMaster.Height = 24
         $btnClearMaster.Width = 35; $btnClearMaster.Height = 24
 
+        # Safely govern utility button visibilities and eliminate ghosting artifacts
         if ($script:IsFreeHandActive) {
-            $btnCopyMaster.Visible = $false; $btnPasteMaster.Visible = $false; $btnClearMaster.Visible = $false
+            $btnCopyMaster.Visible = $true
+            $btnPasteMaster.Visible = $false
+            $btnClearMaster.Visible = $false
+            
+            # Send hidden controls completely off-screen to prevent layout canvas wiping
+            $btnPasteMaster.Left = -200
+            $btnClearMaster.Left = -200
+            $btnCopyMaster.Left = $pnlMaster.Width - 35 - 20
         } else {
-            $btnCopyMaster.Visible = $true; $btnPasteMaster.Visible = $true; $btnClearMaster.Visible = $true
-            $btnClearMaster.Left = $pnlMaster.Width - $btnClearMaster.Width - 20
-            $btnPasteMaster.Left = $btnClearMaster.Left - $btnPasteMaster.Width - 8
-            $btnCopyMaster.Left = $btnPasteMaster.Left - $btnCopyMaster.Width - 8
+            $btnCopyMaster.Visible = $true
+            $btnPasteMaster.Visible = $true
+            $btnClearMaster.Visible = $true
+            
+            $btnClearMaster.Left = $pnlMaster.Width - 35 - 20
+            $btnPasteMaster.Left = $btnClearMaster.Left - 35 - 8
+            $btnCopyMaster.Left = $btnPasteMaster.Left - 35 - 8
         }
         $btnCopyMaster.Top = 13; $btnPasteMaster.Top = 13; $btnClearMaster.Top = 13
-        if ($script:IsFreeHandActive) { $lblMaster.Width = $pnlMaster.Width - 40 } else { $lblMaster.Width = $btnCopyMaster.Left - $lblMaster.Left - 10 }
+        
+        # Position the bottom action buttons sequentially inside the exact same layout slot
+        $btnCalc.Top = $pnlMaster.Top + $pnlMaster.Height + 15
+        $btnCalc.Left = 30; $btnCalc.Width = $newW; $btnCalc.Height = 45
+
+        $btnStartFreeHand.Top = $btnCalc.Top
+        $btnStartFreeHand.Left = 30; $btnStartFreeHand.Width = $newW; $btnStartFreeHand.Height = 45
+
+        $btnSubmitTest.Top = $btnCalc.Top
+        $btnSubmitTest.Left = 30; $btnSubmitTest.Width = $newW; $btnSubmitTest.Height = 45
+        
+        # FIX: Expanded Width to 220 to give 'Starts in 3...' or 'WAITING' full rendering width
+        $lblTimerDisplay.Top = 10; $lblTimerDisplay.Width = 220; $lblTimerDisplay.Height = 35
+        $lblTimerDisplay.Left = $btnCopyMaster.Left - $lblTimerDisplay.Width - 10
+        
+        $lblLiveStats.Top = 22; $lblLiveStats.Left = 20; $lblLiveStats.Width = $lblTimerDisplay.Left - $lblLiveStats.Left - 10
+
+        if ($script:IsFreeHandActive) { $lblMaster.Width = $lblTimerDisplay.Left - $lblMaster.Left - 10 } else { $lblMaster.Width = $btnCopyMaster.Left - $lblMaster.Left - 10 }
 
         $txtMaster.Width = $pnlMaster.Width - ($txtMaster.Left * 2)
         $txtMaster.Height = $pnlMaster.Height - $txtMaster.Top - 15
-        $btnCalc.Top = $pnlMaster.Top + $pnlMaster.Height + 15
         $pnlOutput.Top = $btnCalc.Top + $btnCalc.Height + 15
         $pnlOutput.Height = $form.ClientSize.Height - $pnlOutput.Top - 45
         $lblVersion.Left = $form.ClientSize.Width - $lblVersion.Width - 30; $lblVersion.Top = $form.ClientSize.Height - $lblVersion.Height - 15
