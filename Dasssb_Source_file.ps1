@@ -1,7 +1,7 @@
 # DSSSB LDC Typing Evaluation Simulator
 # Author: Verma_Ji
 # Description: A GUI-based typing test evaluator that calculates strokes, WPM, and errors.
-# versionNo. 3.2 (Layout Clipping & Scaling Fix Patch)
+# versionNo. 3.6
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -714,8 +714,8 @@ function Invoke-AntiSpamFilter {
 # 1. Main Form Initialization
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "DSSSB Typist"
-$form.Size = New-Object System.Drawing.Size(900, 1020)
-$form.MinimumSize = New-Object System.Drawing.Size(700, 850)
+$form.Size = New-Object System.Drawing.Size(900, 800)
+$form.MinimumSize = New-Object System.Drawing.Size(700, 600)
 $form.StartPosition = "CenterScreen"
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $form.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#E2E8F0")
@@ -1116,7 +1116,12 @@ $btnClearMaster.Add_Paint({
     $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#DC2626"), $flags)
 })
-$btnClearMaster.Add_Click({ if ($txtMaster.ReadOnly) { return }; $txtMaster.Text = "" })
+$btnClearMaster.Add_Click({ 
+    if ($txtMaster.ReadOnly) { return }
+    $txtMaster.Text = "" 
+    $script:HasRun = $false
+    Invoke-UpdateLayout
+})
 $pnlMaster.Controls.Add($btnClearMaster)
 
 $lblLiveStats = New-Object System.Windows.Forms.Label
@@ -1158,7 +1163,7 @@ $pnlMaster.Controls.Add($txtMaster)
 $btnCalc = New-Object System.Windows.Forms.Button
 $btnCalc.Text = "Run Analysis"
 $btnCalc.Location = New-Object System.Drawing.Point(30, 495) 
-$btnCalc.Height = 45
+$btnCalc.Height = 40
 $btnCalc.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnCalc.FlatAppearance.BorderSize = 0
 $btnCalc.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
@@ -1168,11 +1173,11 @@ $btnCalc.ForeColor = [System.Drawing.Color]::White
 $btnCalc.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $btnCalc.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnCalc.Tag = "normal"
-$btnCalc.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
-$btnCalc.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+$btnCalc.Add_MouseEnter({ if ($this.Enabled) { $this.Tag = "hover"; $this.Invalidate() } })
+$btnCalc.Add_MouseLeave({ if ($this.Enabled) { $this.Tag = "normal"; $this.Invalidate() } })
 $btnCalc.Add_Paint({
     param($sender, $e)
-    $fill = if ($sender.Tag -eq "hover") { "#0053A0" } else { "#005FB8" }
+    $fill = if ($sender.Tag -eq "disabled") { "#94A3B8" } elseif ($sender.Tag -eq "hover") { "#0053A0" } else { "#005FB8" }
     Invoke-PaintRoundedCorners $sender $e 12 $null $fill
     $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.Color]::FromName("White"), $flags)
@@ -1190,8 +1195,8 @@ $btnSubmitTest.BackColor = [System.Drawing.Color]::Transparent
 $btnSubmitTest.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnSubmitTest.Tag = "normal"
 $btnSubmitTest.Visible = $false
-$btnSubmitTest.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
-$btnSubmitTest.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+$btnSubmitTest.Add_MouseEnter({ if ($this.Enabled) { $this.Tag = "hover"; $this.Invalidate() } })
+$btnSubmitTest.Add_MouseLeave({ if ($this.Enabled) { $this.Tag = "normal"; $this.Invalidate() } })
 $btnSubmitTest.Add_Paint({
     param($sender, $e)
     $fill = if ($sender.Tag -eq "hover") { "#EF4444" } else { "#DC2626" } 
@@ -1212,8 +1217,8 @@ $btnStartFreeHand.BackColor = [System.Drawing.Color]::Transparent
 $btnStartFreeHand.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnStartFreeHand.Tag = "normal"
 $btnStartFreeHand.Visible = $false
-$btnStartFreeHand.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
-$btnStartFreeHand.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+$btnStartFreeHand.Add_MouseEnter({ if ($this.Enabled) { $this.Tag = "hover"; $this.Invalidate() } })
+$btnStartFreeHand.Add_MouseLeave({ if ($this.Enabled) { $this.Tag = "normal"; $this.Invalidate() } })
 $btnStartFreeHand.Add_Paint({
     param($sender, $e)
     $fill = if ($sender.Tag -eq "hover") { "#16A34A" } else { "#22C55E" } 
@@ -1224,30 +1229,9 @@ $btnStartFreeHand.Add_Paint({
 $form.Controls.Add($btnStartFreeHand)
 
 
-# 5. Results & Output Console Area
-$pnlOutput = New-Object System.Windows.Forms.Panel
-$pnlOutput.Location = New-Object System.Drawing.Point(30, 560) 
-$pnlOutput.Padding = New-Object System.Windows.Forms.Padding(12) 
-$pnlOutput.BorderStyle = [System.Windows.Forms.BorderStyle]::None
-$pnlOutput.Add_Paint($CardPaintLayout)
-$form.Controls.Add($pnlOutput)
-
-$txtOutput = New-Object System.Windows.Forms.RichTextBox
-$txtOutput.Multiline = $true
-$txtOutput.ScrollBars = "Both" 
-$txtOutput.WordWrap = $false 
-$txtOutput.Dock = [System.Windows.Forms.DockStyle]::Fill
-$txtOutput.Font = New-Object System.Drawing.Font("Consolas", 10)
-$txtOutput.ReadOnly = $true
-$txtOutput.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FFFFFF") 
-$txtOutput.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#0F172A") 
-$txtOutput.BorderStyle = [System.Windows.Forms.BorderStyle]::None
-$txtOutput.Text = "`r`n  [System Ready] Select a mode and click Run Analysis..."
-$pnlOutput.Controls.Add($txtOutput)
-
 # Easter Egg Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
-$lblVersion.Text = "Ver 3.2"
+$lblVersion.Text = "Ver 3.6"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblVersion.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#000000") 
 $lblVersion.BackColor = [System.Drawing.Color]::Transparent
@@ -1325,6 +1309,211 @@ $form.Controls.Add($lblVersion)
 # Test Logic & Event Management
 # =======================================================================================
 
+function Get-ScoreboardText {
+    if (-not $script:HasRun) { return "" }
+    $totalDisplayErrorCounter = 0
+    $activeStrokesPen = 0
+    $activeWordsPen = 0
+    $spamStrokesToDeduct = 0
+    $renderedLogItems = @()
+    
+    for ($i = 0; $i -lt $script:CurrentErrorObjects.Count; $i++) {
+        $errNum = $i + 1
+        $errObj = $script:CurrentErrorObjects[$i]
+        
+        if ($script:IgnoredErrorIndices -contains $errNum) {
+            $renderedLogItems += "  - [IGNORED] [$errNum] $($errObj.Text)"
+        } else {
+            if ($errObj.Type -eq "Spam") {
+                $spamStrokesToDeduct += $errObj.Length
+                $renderedLogItems += "  - [$errNum] $($errObj.Text)"
+            } else {
+                $activeWordsPen += $errObj.WordPen
+                $activeStrokesPen += $errObj.StrokePen
+                $totalDisplayErrorCounter += $errObj.DisplayErrorCount
+                $renderedLogItems += "  - [$errNum] $($errObj.Text)"
+            }
+        }
+    }
+
+    $script:LastGrossStrokes = $script:LastRawTextLength - $spamStrokesToDeduct
+    if ($script:LastGrossStrokes -lt 0) { $script:LastGrossStrokes = 0 }
+    $grossWords = $script:LastGrossStrokes / 5.0
+    
+    $finalWordsDeductions = ($script:LastScale * $activeWordsPen)
+    $finalNetWords = $grossWords - $finalWordsDeductions
+
+    $finalStrokesDeductions = ($script:LastScale * $activeStrokesPen)
+    $finalNetStrokes = $script:LastGrossStrokes - $finalStrokesDeductions
+
+    if ($script:LastGrossStrokes -gt 0) { $accuracy = ($finalNetStrokes / $script:LastGrossStrokes) * 100 } else { $accuracy = 0.0 }
+    if ($accuracy -lt 0) { $accuracy = 0.0 }
+    
+    $grossWpm = $grossWords / $script:LastDuration
+    $netWpm = $finalNetWords / $script:LastDuration
+    if ($netWpm -lt 0 -and $script:LastGrossStrokes -gt 0) {
+        # Allow negative net speed calculations
+    } elseif ($netWpm -lt 0) {
+        $netWpm = 0.0
+    }
+
+    if ($script:UnitMode -eq "Words") {
+        $col1 = "{0,-32}{1}" -f "  Gross Words Typed : $([math]::Round($grossWords, 2))", "Error Words     : $([math]::Round(($totalDisplayErrorCounter / 5.0), 2))"
+        $col2 = "{0,-32}{1}" -f "  Deduction Ratio   : $($script:LastScale)x", "Net Compliant   : $([math]::Round($finalNetWords, 2)) Words"
+    } else {
+        $col1 = "{0,-32}{1}" -f "  Gross Key Strokes : $($script:LastGrossStrokes)", "Errors Detected : $totalDisplayErrorCounter"
+        $col2 = "{0,-32}{1}" -f "  Deduction Ratio   : $($script:LastScale)x", "Net Compliant   : $([int][math]::Floor($finalNetStrokes)) Strokes"
+    }
+
+    $logOutput = if ($renderedLogItems.Count -gt 0) { $renderedLogItems -join "`r`n" } else { "  - No errors detected." }
+    $formattedDuration = [math]::Round($script:LastDuration, 2)
+
+    $sb = @(
+        "---------------------------------------------------------------------------------------",
+        "  Candidate Practice Run ID : Exam Profile (DSSSB LDC Standard)",
+        "  Evaluation Script Author  : Verma_Ji",
+        "  Calculated Time Frame     : $formattedDuration Minute(s)",
+        "---------------------------------------------------------------------------------------",
+        $col1,
+        $col2,
+        "---------------------------------------------------------------------------------------",
+        "  TYPING ACCURACY   : $([math]::Round($accuracy, 2)) %",
+        "  GROSS SPEED       : $([math]::Round($grossWpm, 2)) WPM",
+        "  NET SPEED         : $([math]::Round($netWpm, 2)) WPM",
+        "  BACKSPACES USED   : $($script:BackspaceCount)", 
+        "---------------------------------------------------------------------------------------",
+        "", "[Detailed Log]:", "[Analysis Log Output]", $logOutput, "", "", "", "" 
+    )
+
+    return ($sb -join "`r`n")
+}
+
+function Invoke-ShowResultsWindow {
+    param([string]$TypedRtf)
+    
+    $resForm = New-Object System.Windows.Forms.Form
+    $resForm.Text = "Evaluation Results - DSSSB LDC"
+    $resForm.Size = New-Object System.Drawing.Size(900, 800)
+    $resForm.MinimumSize = New-Object System.Drawing.Size(600, 600)
+    $resForm.StartPosition = "CenterParent"
+    $resForm.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#F1F5F9")
+    $resForm.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    $lblRes = New-Object System.Windows.Forms.Label
+    $lblRes.Text = "Performance Scoreboard"
+    $lblRes.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+    $lblRes.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#0F172A")
+    $lblRes.Location = New-Object System.Drawing.Point(20, 15)
+    $lblRes.Size = New-Object System.Drawing.Size(800, 30)
+    $resForm.Controls.Add($lblRes)
+
+    $txtScore = New-Object System.Windows.Forms.RichTextBox
+    $txtScore.Location = New-Object System.Drawing.Point(20, 50)
+    $txtScore.Font = New-Object System.Drawing.Font("Consolas", 10.5)
+    $txtScore.ReadOnly = $true
+    $txtScore.BackColor = [System.Drawing.Color]::White
+    $txtScore.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    
+    $txtScore.Text = Get-ScoreboardText
+    
+    # Logic to bold NET SPEED text dynamically inside the popup
+    $applyBolding = {
+        $idx = $txtScore.Text.IndexOf("NET SPEED")
+        if ($idx -ge 0) {
+            $endIdx = $txtScore.Text.IndexOf("`n", $idx)
+            if ($endIdx -lt 0) { $endIdx = $txtScore.Text.Length }
+            $txtScore.Select($idx, $endIdx - $idx)
+            $txtScore.SelectionFont = New-Object System.Drawing.Font($txtScore.Font, [System.Drawing.FontStyle]::Bold)
+            $txtScore.Select(0,0)
+        }
+    }
+    & $applyBolding
+    
+    $resForm.Controls.Add($txtScore)
+
+    $lblTyped = New-Object System.Windows.Forms.Label
+    $lblTyped.Text = "Your Submitted Text (Errors Highlighted):"
+    $lblTyped.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+    $lblTyped.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#0F172A")
+    $lblTyped.AutoSize = $true
+    $resForm.Controls.Add($lblTyped)
+
+    $txtTyped = New-Object System.Windows.Forms.RichTextBox
+    $txtTyped.Font = New-Object System.Drawing.Font("Segoe UI", 12)
+    $txtTyped.ReadOnly = $true
+    $txtTyped.BackColor = [System.Drawing.Color]::White
+    $txtTyped.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $txtTyped.Rtf = $TypedRtf
+    $resForm.Controls.Add($txtTyped)
+
+    $btnCloseRes = New-Object System.Windows.Forms.Button
+    $btnCloseRes.Text = "Close Results"
+    $btnCloseRes.Size = New-Object System.Drawing.Size(160, 35)
+    $btnCloseRes.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnCloseRes.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#005FB8")
+    $btnCloseRes.ForeColor = [System.Drawing.Color]::White
+    $btnCloseRes.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnCloseRes.FlatAppearance.BorderSize = 0
+    $btnCloseRes.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnCloseRes.Add_Click({ $resForm.Close() })
+    $resForm.Controls.Add($btnCloseRes)
+
+    $btnToggleUnitPopup = New-Object System.Windows.Forms.Button
+    $btnToggleUnitPopup.Text = if ($script:UnitMode -eq "Words") { "Switch to Strokes" } else { "Switch to Words" }
+    $btnToggleUnitPopup.Size = New-Object System.Drawing.Size(160, 35)
+    $btnToggleUnitPopup.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnToggleUnitPopup.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#F1F5F9")
+    $btnToggleUnitPopup.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#005FB8")
+    $btnToggleUnitPopup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnToggleUnitPopup.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml("#005FB8")
+    $btnToggleUnitPopup.FlatAppearance.BorderSize = 1
+    $btnToggleUnitPopup.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnToggleUnitPopup.Add_Click({
+        if ($script:UnitMode -eq "Strokes") {
+            $script:UnitMode = "Words"
+            $btnToggleUnitPopup.Text = "Switch to Strokes"
+            $btnToggleUnit.Text = "Data: Words"
+        } else {
+            $script:UnitMode = "Strokes"
+            $btnToggleUnitPopup.Text = "Switch to Words"
+            $btnToggleUnit.Text = "Data: Strokes"
+        }
+        $btnToggleUnit.Invalidate()
+        $txtScore.Text = Get-ScoreboardText
+        & $applyBolding
+    })
+    $resForm.Controls.Add($btnToggleUnitPopup)
+
+    $resForm_ResizeLogic = {
+        $txtScore.Width = $resForm.ClientSize.Width - 40
+        $txtTyped.Width = $resForm.ClientSize.Width - 40
+        
+        $txtScore.Height = [int]($resForm.ClientSize.Height * 0.45)
+        
+        $lblTyped.Top = $txtScore.Bottom + 15
+        $lblTyped.Left = 20
+        
+        $txtTyped.Top = $lblTyped.Bottom + 8
+        $txtTyped.Height = $resForm.ClientSize.Height - $txtTyped.Top - 65
+        $txtTyped.Left = 20
+        
+        $totalWidth = $btnCloseRes.Width + 15 + $btnToggleUnitPopup.Width
+        $startX = ($resForm.ClientSize.Width - $totalWidth) / 2
+
+        $btnCloseRes.Top = $resForm.ClientSize.Height - 50
+        $btnCloseRes.Left = $startX
+
+        $btnToggleUnitPopup.Top = $resForm.ClientSize.Height - 50
+        $btnToggleUnitPopup.Left = $btnCloseRes.Right + 15
+    }
+
+    $resForm.Add_Resize($resForm_ResizeLogic)
+    & $resForm_ResizeLogic
+
+    [void]$resForm.ShowDialog($form)
+    $resForm.Dispose()
+}
+
 function Invoke-HighlightTextBoxErrors {
     $txtMaster.SelectAll()
     $txtMaster.SelectionColor = [System.Drawing.Color]::Black
@@ -1386,9 +1575,15 @@ function Invoke-EndFreeHandTest {
     # Hide operational loops, re-toggle the run summary actions
     $btnSubmitTest.Visible = $false
     $btnStartFreeHand.Visible = $false
-    $btnCalc.Visible = $true
     
-    $txtOutput.Text = "`r`n  Evaluating typing test results..."
+    $btnCalc.Visible = $true
+    $originalBtnText = $btnCalc.Text
+    $btnCalc.Text = "Please wait... Calculating"
+    $btnCalc.Tag = "disabled"
+    $btnCalc.Enabled = $false
+    
+    $pnlConfig.Enabled = $false
+    $pnlMaster.Enabled = $false
     [System.Windows.Forms.Application]::DoEvents()
 
     $typedText = $txtMaster.Text
@@ -1406,7 +1601,7 @@ function Invoke-EndFreeHandTest {
     $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray -MasterText $masterTextFile
     $script:LastRawTextLength = $typedText.Length
     
-    $script:CurrentErrorObjects = $spamResult.FinalErrors
+    $script:CurrentErrorObjects = $spamResult.FinalErrors | Sort-Object Index
     $script:IgnoredErrorIndices = @()
     
     $actualElapsedSecs = $script:FreeHandTotalSeconds - $script:FreeHandSecondsLeft
@@ -1414,18 +1609,25 @@ function Invoke-EndFreeHandTest {
     $script:LastDuration = $actualElapsedSecs / 60.0
     $script:HasRun = $true
     
-    Invoke-RenderScoreboard
-    Invoke-HighlightTextBoxErrors
-
     # Safeguard copy visibilities and refresh active form backgrounds
     $btnCopyMaster.Visible = $true
     $btnPasteMaster.Visible = $false
     $btnClearMaster.Visible = $false
     
+    # Restore UI Elements
+    $pnlConfig.Enabled = $true
+    $pnlMaster.Enabled = $true
+    $btnCalc.Text = "Run Analysis"
+    $btnCalc.Tag = "normal"
+    $btnCalc.Enabled = $true
+    
     Invoke-UpdateLayout
     $pnlMaster.Refresh()
     $pnlConfig.Invalidate($true)
     $btnFreeHand.Invalidate()
+
+    Invoke-HighlightTextBoxErrors
+    Invoke-ShowResultsWindow -TypedRtf $txtMaster.Rtf
 }
 
 $LiveTimer.Add_Tick({
@@ -1450,104 +1652,6 @@ $LiveTimer.Add_Tick({
 })
 
 $btnSubmitTest.Add_Click({ if ($script:IsTestRunning) { [System.Windows.Forms.MessageBox]::Show("Test manually submitted early. Processing exact elapsed time metrics...", "Early Submission"); Invoke-EndFreeHandTest } })
-
-function Invoke-BoldNetSpeedLogic {
-    if ($txtOutput.TextLength -gt 0) {
-        $searchText = "NET SPEED"
-        $idx = $txtOutput.Text.IndexOf($searchText)
-        if ($idx -ge 0) {
-            $endIdx = $txtOutput.Text.IndexOf("`n", $idx)
-            if ($endIdx -lt 0) { $endIdx = $txtOutput.Text.Length }
-            $txtOutput.Select($idx, $endIdx - $idx)
-            $txtOutput.SelectionFont = New-Object System.Drawing.Font($txtOutput.Font, [System.Drawing.FontStyle]::Bold)
-            $txtOutput.Select(0, 0)
-        }
-    }
-}
-
-# Processes errors and renders the final scoreboard view
-function Invoke-RenderScoreboard {
-    if (-not $script:HasRun) { return }
-    $totalDisplayErrorCounter = 0
-    $activeStrokesPen = 0
-    $activeWordsPen = 0
-    $spamStrokesToDeduct = 0
-    $renderedLogItems = @()
-    
-    for ($i = 0; $i -lt $script:CurrentErrorObjects.Count; $i++) {
-        $errNum = $i + 1
-        $errObj = $script:CurrentErrorObjects[$i]
-        
-        if ($script:IgnoredErrorIndices -contains $errNum) {
-            $renderedLogItems += "  - [IGNORED] [$errNum] $($errObj.Text)"
-        } else {
-            if ($errObj.Type -eq "Spam") {
-                $spamStrokesToDeduct += $errObj.Length
-                $renderedLogItems += "  - [$errNum] $($errObj.Text)"
-            } else {
-                $activeWordsPen += $errObj.WordPen
-                $activeStrokesPen += $errObj.StrokePen
-                $totalDisplayErrorCounter += $errObj.DisplayErrorCount
-                $renderedLogItems += "  - [$errNum] $($errObj.Text)"
-            }
-        }
-    }
-
-    # Dynamically calculate Gross Strokes (If spam is ignored, it doesn't get deducted!)
-    $script:LastGrossStrokes = $script:LastRawTextLength - $spamStrokesToDeduct
-    if ($script:LastGrossStrokes -lt 0) { $script:LastGrossStrokes = 0 }
-    $grossWords = $script:LastGrossStrokes / 5.0
-    
-    # Standard Deductions
-    $finalWordsDeductions = ($script:LastScale * $activeWordsPen)
-    $finalNetWords = $grossWords - $finalWordsDeductions
-
-    $finalStrokesDeductions = ($script:LastScale * $activeStrokesPen)
-    $finalNetStrokes = $script:LastGrossStrokes - $finalStrokesDeductions
-
-    if ($script:LastGrossStrokes -gt 0) { $accuracy = ($finalNetStrokes / $script:LastGrossStrokes) * 100 } else { $accuracy = 0.0 }
-    if ($accuracy -lt 0) { $accuracy = 0.0 }
-    
-    $grossWpm = $grossWords / $script:LastDuration
-    $netWpm = $finalNetWords / $script:LastDuration
-    if ($netWpm -lt 0 -and $script:LastGrossStrokes -gt 0) {
-        # Allow negative net speed calculations to properly reflect heavy cheat penalties
-    } elseif ($netWpm -lt 0) {
-        $netWpm = 0.0
-    }
-
-    if ($script:UnitMode -eq "Words") {
-        $col1 = "{0,-32}{1}" -f "  Gross Words Typed : $([math]::Round($grossWords, 2))", "Error Words     : $([math]::Round(($totalDisplayErrorCounter / 5.0), 2))"
-        $col2 = "{0,-32}{1}" -f "  Deduction Ratio   : $($script:LastScale)x", "Net Compliant   : $([math]::Round($finalNetWords, 2)) Words"
-    } else {
-        $col1 = "{0,-32}{1}" -f "  Gross Key Strokes : $($script:LastGrossStrokes)", "Errors Detected : $totalDisplayErrorCounter"
-        $col2 = "{0,-32}{1}" -f "  Deduction Ratio   : $($script:LastScale)x", "Net Compliant   : $([int][math]::Floor($finalNetStrokes)) Strokes"
-    }
-
-    $logOutput = if ($renderedLogItems.Count -gt 0) { $renderedLogItems -join "`r`n" } else { "  - No errors detected." }
-    $formattedDuration = [math]::Round($script:LastDuration, 2)
-
-    $sb = @(
-        "---------------------------------------------------------------------------------------",
-        "  Candidate Practice Run ID : Exam Profile (DSSSB LDC Standard)",
-        "  Evaluation Script Author  : Verma_Ji",
-        "  Calculated Time Frame     : $formattedDuration Minute(s)",
-        "---------------------------------------------------------------------------------------",
-        $col1,
-        $col2,
-        "---------------------------------------------------------------------------------------",
-        "  TYPING ACCURACY   : $([math]::Round($accuracy, 2)) %",
-        "  GROSS SPEED       : $([math]::Round($grossWpm, 2)) WPM",
-        "  NET SPEED         : $([math]::Round($netWpm, 2)) WPM",
-        "  BACKSPACES USED   : $($script:BackspaceCount)", 
-        "---------------------------------------------------------------------------------------",
-        "", "[Detailed Log]:", "[Analysis Log Output]", $logOutput, "", "", "", "" 
-    )
-
-    $txtOutput.Text = $sb -join "`r`n"
-    Invoke-BoldNetSpeedLogic
-    $txtOutput.SelectionStart = 0; $txtOutput.ScrollToCaret(); $txtOutput.Refresh()
-}
 
 $btnFreeHand.Add_Click({
     if ($script:IsFreeHandActive) {
@@ -1582,6 +1686,7 @@ $btnFreeHand.Add_Click({
     # ENTERING FREE HAND MODE
     $script:IsFreeHandActive = $true
     $script:IsTestRunning = $false
+    $script:HasRun = $false
     $pnlConfig.Invalidate($true)
     $btnFreeHand.Invalidate()
     
@@ -1629,7 +1734,16 @@ $btnStartFreeHand.Add_Click({
 
 $btnCalc.Add_Click({
     if ($script:IsTestRunning) { return }
+    
+    $originalText = $btnCalc.Text
+    $btnCalc.Text = "Please wait... Calculating"
+    $btnCalc.Tag = "disabled"
     $btnCalc.Enabled = $false
+    
+    $pnlConfig.Enabled = $false
+    $pnlMaster.Enabled = $false
+    [System.Windows.Forms.Application]::DoEvents()
+    
     try {
         $duration = 10.0
         if (![double]::TryParse($txtTime.Text, [ref]$duration) -or $duration -le 0) { $duration = 10.0 }
@@ -1643,9 +1757,11 @@ $btnCalc.Add_Click({
                     return
                 }
                 $rawText = Get-Content $txtPath.Text -Raw -Encoding UTF8
-                if ($null -ne $rawText) { $typedText = $rawText -replace "`r`n", "`n" }
+                if ($null -ne $rawText) { 
+                    $typedText = $rawText -replace "`r`n", "`n" 
+                    $txtMaster.Text = $typedText
+                }
             }
-            $txtOutput.Text = "`r`n  Initializing evaluation engine..."
             [System.Windows.Forms.Application]::DoEvents()
             $script:LastScale = 2.0 
             $masterTextFile = ""
@@ -1669,12 +1785,25 @@ $btnCalc.Add_Click({
         $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray -MasterText $masterTextFile
         $script:LastRawTextLength = $typedText.Length
         
-        $script:CurrentErrorObjects = $spamResult.FinalErrors
+        $script:CurrentErrorObjects = $spamResult.FinalErrors | Sort-Object Index
         $script:IgnoredErrorIndices = @()
         $script:LastDuration = $duration; $script:HasRun = $true
 
-        Invoke-RenderScoreboard; Invoke-HighlightTextBoxErrors
-    } finally { $btnCalc.Enabled = $true }
+    } finally { 
+        # Re-enable the UI components once calculation finishes
+        $pnlConfig.Enabled = $true
+        $pnlMaster.Enabled = $true
+        $btnCalc.Text = $originalText
+        $btnCalc.Tag = "normal"
+        $btnCalc.Enabled = $true
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+    
+    if ($script:HasRun) {
+        Invoke-UpdateLayout
+        Invoke-HighlightTextBoxErrors
+        Invoke-ShowResultsWindow -TypedRtf $txtMaster.Rtf
+    }
 })
 
 # Recalculates sizes and positions of UI elements when window resizes
@@ -1686,14 +1815,15 @@ function Invoke-UpdateLayout {
 
         $pnlConfig.Left = 30; $pnlConfig.Width = $newW
         $pnlMaster.Left = 30; $pnlMaster.Width = $newW
-        $pnlOutput.Left = 30; $pnlOutput.Width = $newW
 
         $btnBrowse.Left = $pnlConfig.Width - $btnBrowse.Width - 15
         $btnToggleEngine.Left = $btnBrowse.Left - $btnToggleEngine.Width - 15; $btnToggleEngine.Top = 20
         $txtPath.Width = $btnToggleEngine.Left - $txtPath.Left - 15
-        $remainingHeight = $form.ClientSize.Height - $pnlMaster.Top - 90 
+        
+        # Maximize the main typing window completely with a comfortable 120px clearance buffer
+        $remainingHeight = $form.ClientSize.Height - $pnlMaster.Top - 120 
         if ($remainingHeight -lt 300) { $remainingHeight = 300 }
-        $pnlMaster.Height = [int]($remainingHeight * 0.45)
+        $pnlMaster.Height = $remainingHeight
         
         # FIX: Hard-lock utility button dimensions strictly to 35x24 to stop DPI expansion
         $btnCopyMaster.Width = 35; $btnCopyMaster.Height = 24
@@ -1723,13 +1853,13 @@ function Invoke-UpdateLayout {
         
         # Position the bottom action buttons sequentially inside the exact same layout slot
         $btnCalc.Top = $pnlMaster.Top + $pnlMaster.Height + 15
-        $btnCalc.Left = 30; $btnCalc.Width = $newW; $btnCalc.Height = 45
+        $btnCalc.Left = 30; $btnCalc.Width = $newW; $btnCalc.Height = 40
 
         $btnStartFreeHand.Top = $btnCalc.Top
-        $btnStartFreeHand.Left = 30; $btnStartFreeHand.Width = $newW; $btnStartFreeHand.Height = 45
+        $btnStartFreeHand.Left = 30; $btnStartFreeHand.Width = $newW; $btnStartFreeHand.Height = 40
 
         $btnSubmitTest.Top = $btnCalc.Top
-        $btnSubmitTest.Left = 30; $btnSubmitTest.Width = $newW; $btnSubmitTest.Height = 45
+        $btnSubmitTest.Left = 30; $btnSubmitTest.Width = $newW; $btnSubmitTest.Height = 40
         
         # FIX: Expanded Width to 220 to give 'Starts in 3...' or 'WAITING' full rendering width
         $lblTimerDisplay.Top = 10; $lblTimerDisplay.Width = 220; $lblTimerDisplay.Height = 35
@@ -1741,13 +1871,10 @@ function Invoke-UpdateLayout {
 
         $txtMaster.Width = $pnlMaster.Width - ($txtMaster.Left * 2)
         $txtMaster.Height = $pnlMaster.Height - $txtMaster.Top - 15
-        $pnlOutput.Top = $btnCalc.Top + $btnCalc.Height + 15
-        $pnlOutput.Height = $form.ClientSize.Height - $pnlOutput.Top - 45
+        
         $lblVersion.Left = $form.ClientSize.Width - $lblVersion.Width - 30; $lblVersion.Top = $form.ClientSize.Height - $lblVersion.Height - 15
 
         $scale = $form.Width / 850.0
-        $newOutputSize = [float]([math]::Max(10.0, 10.0 + (($scale - 1) * 2)))
-        if ([math]::Abs($txtOutput.Font.Size - $newOutputSize) -gt 0.5) { $txtOutput.Font = New-Object System.Drawing.Font("Consolas", $newOutputSize) }
         $newMasterSize = [float]([math]::Max(13.5, 13.5 + (($scale - 1) * 2.25)))
         if ([math]::Abs($txtMaster.Font.Size - $newMasterSize) -gt 0.5) { $txtMaster.Font = New-Object System.Drawing.Font("Segoe UI", $newMasterSize) }
         $newBtnSize = [float]([math]::Max(10.0, 10.0 + (($scale - 1) * 1.5)))
@@ -1755,14 +1882,13 @@ function Invoke-UpdateLayout {
         
         $form.ResumeLayout($true)
         if ($script:HasRun) { Invoke-HighlightTextBoxErrors }
-        Invoke-BoldNetSpeedLogic
     }
 }
 
 $btnToggleUnit.Add_Click({
     if ($script:IsTestRunning) { return }
     if ($script:UnitMode -eq "Strokes") { $script:UnitMode = "Words"; $btnToggleUnit.Text = "Data: Words" } else { $script:UnitMode = "Strokes"; $btnToggleUnit.Text = "Data: Strokes" }
-    $btnToggleUnit.Invalidate(); Invoke-RenderScoreboard
+    $btnToggleUnit.Invalidate()
 })
 
 $btnIgnore.Add_Click({
@@ -1799,7 +1925,8 @@ $btnIgnore.Add_Click({
         $newIgnored = @()
         for ($i = 0; $i -lt $clb.Items.Count; $i++) { if ($clb.GetItemChecked($i)) { $newIgnored += ($i + 1) } }
         $script:IgnoredErrorIndices = $newIgnored
-        Invoke-RenderScoreboard; Invoke-HighlightTextBoxErrors
+        Invoke-HighlightTextBoxErrors
+        Invoke-ShowResultsWindow -TypedRtf $txtMaster.Rtf
     }
     $dialog.Dispose()
 })
