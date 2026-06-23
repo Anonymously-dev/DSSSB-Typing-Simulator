@@ -1601,7 +1601,7 @@ function Invoke-EndFreeHandTest {
     $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray -MasterText $masterTextFile
     $script:LastRawTextLength = $typedText.Length
     
-    $script:CurrentErrorObjects = $spamResult.FinalErrors | Sort-Object Index
+    $script:CurrentErrorObjects = @($spamResult.FinalErrors | Sort-Object Index)
     $script:IgnoredErrorIndices = @()
     
     $actualElapsedSecs = $script:FreeHandTotalSeconds - $script:FreeHandSecondsLeft
@@ -1785,7 +1785,7 @@ $btnCalc.Add_Click({
         $spamResult = Invoke-AntiSpamFilter -InputText $typedText -EngineErrors $errorsArray -MasterText $masterTextFile
         $script:LastRawTextLength = $typedText.Length
         
-        $script:CurrentErrorObjects = $spamResult.FinalErrors | Sort-Object Index
+        $script:CurrentErrorObjects = @($spamResult.FinalErrors | Sort-Object Index)
         $script:IgnoredErrorIndices = @()
         $script:LastDuration = $duration; $script:HasRun = $true
 
