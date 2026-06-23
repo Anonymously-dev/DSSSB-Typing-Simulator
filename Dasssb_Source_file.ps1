@@ -477,11 +477,11 @@ function Run-StandaloneEngine {
         }
         
         try {
-			if ($null -ne $globalDocObj) { $globalDocObj.Close([ref]0); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalDocObj) | Out-Null }
-			$globalWordObj.Quit()
-		} catch {}
-		[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalWordObj)
-		[GC]::Collect(); [GC]::WaitForPendingFinalizers()
+            if ($null -ne $globalDocObj) { $globalDocObj.Close([ref]0); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalDocObj) | Out-Null }
+            $globalWordObj.Quit()
+        } catch {}
+        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalWordObj)
+        [GC]::Collect(); [GC]::WaitForPendingFinalizers()
     
     } else {
         # Uses built-in Windows WPF Spellcheck API
@@ -521,7 +521,7 @@ function Run-StandaloneEngine {
                 $word = $word.TrimEnd('.')
                 $cleanWord = $word.ToLower()
                 if ($cleanWord.Length -eq 0) { continue }
-				
+                
                 if ($word -ceq "i") {
                     [void]$errorList.Add([PSCustomObject]@{ 
                         Type = "Grammar"; Text = "Typo: 'i' (Expected: 'I')"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
@@ -575,8 +575,10 @@ function Run-StandaloneEngine {
         })
     }
 
+    # FIX 1: Missing space after punctuation check
     foreach ($match in [regex]::Matches($TextData, "([.,!?;/:]+)([a-zA-Z0-9]+)")) {
-        $punc = $match.Groups.Value; $targetWord = $match.Groups.Value; $startIdx = $match.Index
+        # Correctly targeting specific capture groups [1] and [2]
+        $punc = $match.Groups[1].Value; $targetWord = $match.Groups[2].Value; $startIdx = $match.Index
         while ($startIdx -gt 0 -and -not [char]::IsWhiteSpace($TextData[$startIdx - 1])) { $startIdx-- }
         $endIdx = $match.Index + $match.Length
         while ($endIdx -lt $TextData.Length -and -not [char]::IsWhiteSpace($TextData[$endIdx])) { $endIdx++ }
@@ -603,8 +605,10 @@ function Run-StandaloneEngine {
         }
     }
 
+    # FIX 2: Capitalization check
     foreach ($match in [regex]::Matches($TextData, "([.]\s+)([a-z][a-zA-Z0-9'-]*)")) {
-        $targetWord = $match.Groups.Value; $wordIdx = $match.Groups.Index; $wordLen = $match.Groups.Length
+        # Correctly targeting specific capture group [2]
+        $targetWord = $match.Groups[2].Value; $wordIdx = $match.Groups[2].Index; $wordLen = $match.Groups[2].Length
         $itemsToRemove = New-Object System.Collections.ArrayList
         foreach ($err in $errorList) {
             if ($err.Index -ge $wordIdx -and ($err.Index + $err.Length) -le ($wordIdx + $wordLen)) {
@@ -616,7 +620,7 @@ function Run-StandaloneEngine {
             Type = "Capitalization"; Text = "Capitalization Error: '$targetWord' should be capitalized after period."; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $wordIdx; Length = $wordLen
         })
     }
-	
+    
     foreach ($regexMatch in [regex]::Matches($TextData, "([0-9]+\s*\.\s*[0-9]+)")) {
         if ($regexMatch.Value -match "\s") {
             $startIdx = [int]$regexMatch.Index; $fullLength = [int]$regexMatch.Length
