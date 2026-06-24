@@ -52,10 +52,6 @@ $script:balloonTip.AutoPopDelay = 6000
 # Embedded Assets (Base64 Audio & Images)
 # =======================================================================================
 
-# =======================================================================================
-# Embedded Assets (Base64 Audio & Images)
-# =======================================================================================
-
 # Paste background track Base64 here:
 $script:Base64Music = ""
 
@@ -106,12 +102,16 @@ $script:TypingStopTimer.Add_Tick({
 
 # Triggers the typing sound effect based on keypresses
 function Invoke-StagedTypingSound {
-    if (-not $script:IsDistractionPlaying) { 
+    # ===================================================================================
+    # PATCH: Play sound ONLY during an active Live Typing Test (No sound in normal mode)
+    # ===================================================================================
+    if (-not $script:IsDistractionPlaying -or -not $script:IsTestRunning) { 
         $script:TypingStopTimer.Stop()
         $script:IsTypingLoopPlaying = $false
         try { $script:SystemSoundPlayer.Stop() } catch {}
         return 
     }
+    # ===================================================================================
 
     if ([string]::IsNullOrWhiteSpace($script:Base64TypingSound)) { return }
     
@@ -1282,6 +1282,14 @@ $lblVersion.TextAlign = [System.Drawing.ContentAlignment]::BottomRight
 $lblVersion.Cursor = [System.Windows.Forms.Cursors]::Hand
 
 $lblVersion.Add_Click({
+    # ===================================================================================
+    # PATCH: Reset typing sound loop states so it can re-trigger after the popup closes
+    # ===================================================================================
+    if ($null -ne $script:TypingStopTimer) { $script:TypingStopTimer.Stop() }
+    $script:IsTypingLoopPlaying = $false
+    try { if ($null -ne $script:SystemSoundPlayer) { $script:SystemSoundPlayer.Stop() } } catch {}
+    # ===================================================================================
+
     $popupPlayer = New-Object System.Media.SoundPlayer
     $musicPath = Join-Path $env:TEMP "gta4_popup_music.wav"
     if ($script:Base64Music.Length -gt 100) {
@@ -1433,6 +1441,11 @@ function Get-ScoreboardText {
 function Invoke-ShowResultsWindow {
     param([string]$TypedRtf)
     
+    # Forcefully stop any running mechanical sound loops instantly
+    if ($null -ne $script:TypingStopTimer) { $script:TypingStopTimer.Stop() }
+    $script:IsTypingLoopPlaying = $false
+    try { if ($null -ne $script:SystemSoundPlayer) { $script:SystemSoundPlayer.Stop() } } catch {}
+	
     $resForm = New-Object System.Windows.Forms.Form
     $resForm.Text = "Evaluation Results - DSSSB LDC"
     $resForm.Size = New-Object System.Drawing.Size(900, 800)
