@@ -1,7 +1,7 @@
 # DSSSB LDC Typing Evaluation Simulator
 # Author: Verma_Ji
 # Description: A GUI-based typing test evaluator that calculates strokes, WPM, and errors.
-# versionNo. 4.0B
+# versionNo. 4B
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -1273,7 +1273,7 @@ $form.Controls.Add($btnStartFreeHand)
 
 # Build MSG Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
-$lblVersion.Text = "Build v3.9"
+$lblVersion.Text = "Build v4B"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblVersion.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#000000") 
 $lblVersion.BackColor = [System.Drawing.Color]::Transparent
