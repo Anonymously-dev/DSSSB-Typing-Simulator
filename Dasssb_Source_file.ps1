@@ -1273,7 +1273,7 @@ $form.Controls.Add($btnStartFreeHand)
 
 # Build MSG Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
-$lblVersion.Text = "Build v4B"
+$lblVersion.Text = "Build v4 BETA"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblVersion.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#000000") 
 $lblVersion.BackColor = [System.Drawing.Color]::Transparent
