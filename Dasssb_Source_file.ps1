@@ -1,7 +1,7 @@
 # DSSSB LDC Typing Evaluation Simulator
 # Author: Verma_Ji
 # Description: A GUI-based typing test evaluator that calculates strokes, WPM, and errors.
-# versionNo. 3.9
+# versionNo. 4.0B
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -52,6 +52,10 @@ $script:balloonTip.AutoPopDelay = 6000
 # Embedded Assets (Base64 Audio & Images)
 # =======================================================================================
 
+# =======================================================================================
+# Embedded Assets (Base64 Audio & Images)
+# =======================================================================================
+
 # Paste background track Base64 here:
 $script:Base64Music = ""
 
@@ -74,9 +78,9 @@ try {
 
 $script:TempAudioPath = Join-Path $env:TEMP "dsssb_exam_noise.dat"
 
-if ($script:Base64Music.Length -gt 100 -and $null -ne $script:NoisePlayer) {
+if ($script:Base64Audio.Length -gt 100 -and $null -ne $script:NoisePlayer) {
     try {
-        $cleanBase64 = $script:Base64Music -replace "[^a-zA-Z0-9+/=]", ""
+        $cleanBase64 = $script:Base64Audio -replace "[^a-zA-Z0-9+/=]", ""
         $audioBytes = [System.Convert]::FromBase64String($cleanBase64)
         [IO.File]::WriteAllBytes($script:TempAudioPath, $audioBytes)
         
@@ -809,7 +813,7 @@ $pnlConfig.Controls.Add($btnBrowse)
 $script:balloonTip.SetToolTip($btnBrowse, "Browse and load a .txt target file containing your typed draft.")
 
 $lblTime = New-Object System.Windows.Forms.Label
-$lblTime.Text = "Duration (Mins)"
+$lblTime.Text = "Duration Mins."
 $lblTime.Location = New-Object System.Drawing.Point(20, 65)
 $lblTime.Size = New-Object System.Drawing.Size(115, 20)
 $lblTime.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
@@ -913,7 +917,7 @@ $pnlConfig.Controls.Add($btnToggleEngine)
 $script:balloonTip.SetToolTip($btnToggleEngine, "Switch between Native Windows spellcheck and Microsoft Word dictionary engine.")
 
 $btnFreeHand = New-Object System.Windows.Forms.Button
-$btnFreeHand.Text = "Free Hand Typing"
+$btnFreeHand.Text = "Live Test Typing"
 $btnFreeHand.Location = New-Object System.Drawing.Point(485, 60)
 $btnFreeHand.Width = 130
 $btnFreeHand.Height = 25
@@ -994,7 +998,7 @@ function Invoke-IgnoreErrorsDialog {
     }
     
     $dialog = New-Object System.Windows.Forms.Form
-    $dialog.Text = "Select System Errors to Exclude"
+    $dialog.Text = "Select Errors to Filter & Exclude"
     $dialog.Size = New-Object System.Drawing.Size(600, 480)
     $dialog.MinimumSize = New-Object System.Drawing.Size(500, 400)
     $dialog.StartPosition = "CenterParent"
@@ -1028,7 +1032,7 @@ function Invoke-IgnoreErrorsDialog {
     $dialog.Controls.Add($clb)
 
     $btnOK = New-Object System.Windows.Forms.Button
-    $btnOK.Text = "Apply Exclusions"
+    $btnOK.Text = "Apply Filter"
     $btnOK.DialogResult = [System.Windows.Forms.DialogResult]::OK
     $btnOK.Location = New-Object System.Drawing.Point(300, 385)
     $btnOK.Size = New-Object System.Drawing.Size(150, 32)
@@ -1267,9 +1271,9 @@ $btnStartFreeHand.Add_Paint({
 $form.Controls.Add($btnStartFreeHand)
 
 
-# Easter Egg Control Button
+# Build MSG Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
-$lblVersion.Text = "Ver 3.9"
+$lblVersion.Text = "Build v3.9"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblVersion.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#000000") 
 $lblVersion.BackColor = [System.Drawing.Color]::Transparent
@@ -1498,7 +1502,7 @@ function Invoke-ShowResultsWindow {
     $pnlTyped.Controls.Add($txtTyped)
 
     $btnCloseRes = New-Object System.Windows.Forms.Button
-    $btnCloseRes.Text = "Close Results"
+    $btnCloseRes.Text = "Close Scoreboard"
     $btnCloseRes.Size = New-Object System.Drawing.Size(160, 35)
     $btnCloseRes.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $btnCloseRes.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -1550,7 +1554,7 @@ function Invoke-ShowResultsWindow {
     $resForm.Controls.Add($btnToggleUnitPopup)
 
     $btnIgnorePopup = New-Object System.Windows.Forms.Button
-    $btnIgnorePopup.Text = "Ignore Errors"
+    $btnIgnorePopup.Text = "Filter Errors"
     $btnIgnorePopup.Size = New-Object System.Drawing.Size(140, 35)
     $btnIgnorePopup.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $btnIgnorePopup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -1568,13 +1572,17 @@ function Invoke-ShowResultsWindow {
         [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#DC2626"), $flags)
     })
     $btnIgnorePopup.Add_Click({
-        if (Invoke-IgnoreErrorsDialog) {
-            $txtScore.Text = Get-ScoreboardText
-            & $applyBolding
-            Invoke-HighlightTextBoxErrors
-            $txtTyped.Rtf = $txtMaster.Rtf
-        }
-    })
+		if ($script:CurrentErrorObjects.Count -eq 0) {
+			[System.Windows.Forms.MessageBox]::Show("No Errors Found.", "Filter Status", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+			return
+		}
+		if (Invoke-IgnoreErrorsDialog) {
+			$txtScore.Text = Get-ScoreboardText
+			& $applyBolding
+			Invoke-HighlightTextBoxErrors
+			$txtTyped.Rtf = $txtMaster.Rtf
+		}
+	})
     $resForm.Controls.Add($btnIgnorePopup)
 
     $resForm_ResizeLogic = {
@@ -1732,7 +1740,37 @@ function Invoke-EndFreeHandTest {
     $btnFreeHand.Invalidate()
 
     Invoke-HighlightTextBoxErrors
+    
+    # 1. Show the scoreboard window (Pauses here until closed)
     Invoke-ShowResultsWindow -TypedRtf $txtMaster.Rtf
+
+    # 2. AUTO-EXIT LIVE TYPING MODE AFTER USER CLOSES SCOREBOARD
+    $LiveTimer.Stop()
+    $script:IsFreeHandActive = $false
+    $script:IsTestRunning = $false
+    
+    $pnlConfig.Invalidate($true)
+    $btnFreeHand.Invalidate()
+    $lblMaster.Visible = $true
+    
+    $btnCopyMaster.Visible = $true
+    $btnPasteMaster.Visible = $true
+    $btnClearMaster.Visible = $true
+    
+    $lblLiveStats.Visible = $false
+    $lblTimerDisplay.Visible = $false
+    
+    # Reset Bottom Action Buttons back to standard mode
+    $btnStartFreeHand.Visible = $false
+    $btnSubmitTest.Visible = $false
+    $btnCalc.Visible = $true
+    
+    # Allow editing in normal mode and PRESERVE the typed text
+    $txtMaster.ReadOnly = $false 
+    # $txtMaster.Text = ""  <-- REMOVED OR COMMENTED OUT TO KEEP THE TEXT IN WINDOW
+    
+    Invoke-UpdateLayout
+    $pnlMaster.Refresh()
 }
 
 $LiveTimer.Add_Tick({
@@ -1750,13 +1788,13 @@ $LiveTimer.Add_Tick({
         }
     } else {
         if ($script:FreeHandSecondsLeft -gt 0) { $script:FreeHandSecondsLeft--; Invoke-UpdateLiveStats } else {
-            $LiveTimer.Stop(); [System.Windows.Forms.MessageBox]::Show("Time is up! Processing your metrics now.", "Session Finished")
+            $LiveTimer.Stop()
             Invoke-EndFreeHandTest
         }
     }
 })
 
-$btnSubmitTest.Add_Click({ if ($script:IsTestRunning) { [System.Windows.Forms.MessageBox]::Show("Test manually submitted early. Processing exact elapsed time metrics...", "Early Submission"); Invoke-EndFreeHandTest } })
+$btnSubmitTest.Add_Click({ if ($script:IsTestRunning) { Invoke-EndFreeHandTest } })
 
 $btnFreeHand.Add_Click({
     if ($script:IsFreeHandActive) {
@@ -1811,7 +1849,7 @@ $btnFreeHand.Add_Click({
     $btnSubmitTest.Visible = $false
     $btnCalc.Visible = $false
     
-    $lblTimerDisplay.Text = "WAITING"
+    $lblTimerDisplay.Text = "Ready"
     $lblLiveStats.Text = "Strokes: 0  |  Speed: 0.0 WPM  |  Backspaces: 0"
     
     Invoke-UpdateLayout
