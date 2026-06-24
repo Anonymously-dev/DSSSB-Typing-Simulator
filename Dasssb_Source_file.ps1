@@ -1,7 +1,7 @@
 # DSSSB LDC Typing Evaluation Simulator
 # Author: Verma_Ji
 # Description: A GUI-based typing test evaluator that calculates strokes, WPM, and errors.
-# versionNo. 3.6
+# versionNo. 4B
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -44,9 +44,13 @@ $script:LiveMasterTextCache = ""
 # Tooltip settings for UI elements
 $script:balloonTip = New-Object System.Windows.Forms.ToolTip
 $script:balloonTip.IsBalloon = $true
-$script:balloonTip.InitialDelay = 1400  
+$script:balloonTip.InitialDelay = 800  
 $script:balloonTip.ReshowDelay = 500
 $script:balloonTip.AutoPopDelay = 6000 
+
+# =======================================================================================
+# Embedded Assets (Base64 Audio & Images)
+# =======================================================================================
 
 # =======================================================================================
 # Embedded Assets (Base64 Audio & Images)
@@ -477,11 +481,11 @@ function Run-StandaloneEngine {
         }
         
         try {
-			if ($null -ne $globalDocObj) { $globalDocObj.Close([ref]0); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalDocObj) | Out-Null }
-			$globalWordObj.Quit()
-		} catch {}
-		[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalWordObj)
-		[GC]::Collect(); [GC]::WaitForPendingFinalizers()
+            if ($null -ne $globalDocObj) { $globalDocObj.Close([ref]0); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalDocObj) | Out-Null }
+            $globalWordObj.Quit()
+        } catch {}
+        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($globalWordObj)
+        [GC]::Collect(); [GC]::WaitForPendingFinalizers()
     
     } else {
         # Uses built-in Windows WPF Spellcheck API
@@ -521,7 +525,7 @@ function Run-StandaloneEngine {
                 $word = $word.TrimEnd('.')
                 $cleanWord = $word.ToLower()
                 if ($cleanWord.Length -eq 0) { continue }
-				
+                
                 if ($word -ceq "i") {
                     [void]$errorList.Add([PSCustomObject]@{ 
                         Type = "Grammar"; Text = "Typo: 'i' (Expected: 'I')"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
@@ -575,7 +579,9 @@ function Run-StandaloneEngine {
         })
     }
 
+    # FIX 1: Missing space after punctuation check
     foreach ($match in [regex]::Matches($TextData, "([.,!?;/:]+)([a-zA-Z0-9]+)")) {
+        # Correctly targeting specific capture groups [1] and [2]
         $punc = $match.Groups[1].Value; $targetWord = $match.Groups[2].Value; $startIdx = $match.Index
         while ($startIdx -gt 0 -and -not [char]::IsWhiteSpace($TextData[$startIdx - 1])) { $startIdx-- }
         $endIdx = $match.Index + $match.Length
@@ -603,7 +609,9 @@ function Run-StandaloneEngine {
         }
     }
 
+    # FIX 2: Capitalization check
     foreach ($match in [regex]::Matches($TextData, "([.]\s+)([a-z][a-zA-Z0-9'-]*)")) {
+        # Correctly targeting specific capture group [2]
         $targetWord = $match.Groups[2].Value; $wordIdx = $match.Groups[2].Index; $wordLen = $match.Groups[2].Length
         $itemsToRemove = New-Object System.Collections.ArrayList
         foreach ($err in $errorList) {
@@ -616,7 +624,7 @@ function Run-StandaloneEngine {
             Type = "Capitalization"; Text = "Capitalization Error: '$targetWord' should be capitalized after period."; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $wordIdx; Length = $wordLen
         })
     }
-	
+    
     foreach ($regexMatch in [regex]::Matches($TextData, "([0-9]+\s*\.\s*[0-9]+)")) {
         if ($regexMatch.Value -match "\s") {
             $startIdx = [int]$regexMatch.Index; $fullLength = [int]$regexMatch.Length
@@ -715,7 +723,7 @@ function Invoke-AntiSpamFilter {
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "DSSSB Typist"
 $form.Size = New-Object System.Drawing.Size(900, 800)
-$form.MinimumSize = New-Object System.Drawing.Size(700, 600)
+$form.MinimumSize = New-Object System.Drawing.Size(750, 600) # Increased min size slightly for the packed second row
 $form.StartPosition = "CenterScreen"
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $form.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#E2E8F0")
@@ -802,10 +810,71 @@ $btnBrowse.Add_Paint({
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#334155"), $flags)
 })
 $pnlConfig.Controls.Add($btnBrowse)
+$script:balloonTip.SetToolTip($btnBrowse, "Browse and load a .txt target file containing your typed draft.")
+
+$lblTime = New-Object System.Windows.Forms.Label
+$lblTime.Text = "Duration Mins."
+$lblTime.Location = New-Object System.Drawing.Point(20, 65)
+$lblTime.Size = New-Object System.Drawing.Size(115, 20)
+$lblTime.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$lblTime.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#334155")
+$lblTime.BackColor = [System.Drawing.Color]::White
+$pnlConfig.Controls.Add($lblTime)
+
+$txtTime = New-Object System.Windows.Forms.TextBox
+$txtTime.Text = "10"
+$txtTime.Location = New-Object System.Drawing.Point(135, 62) 
+$txtTime.Width = 60
+$txtTime.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$pnlConfig.Controls.Add($txtTime)
+$script:balloonTip.SetToolTip($txtTime, "Set the test duration in minutes.")
+
+$btnToggleMode = New-Object System.Windows.Forms.Button
+$btnToggleMode.Text = "Mode: Dictionary"
+$btnToggleMode.Location = New-Object System.Drawing.Point(205, 60)
+$btnToggleMode.Width = 130
+$btnToggleMode.Height = 25
+$btnToggleMode.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnToggleMode.FlatAppearance.BorderSize = 0
+$btnToggleMode.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
+$btnToggleMode.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Transparent
+$btnToggleMode.BackColor = [System.Drawing.Color]::Transparent
+$btnToggleMode.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnToggleMode.Tag = "normal"
+$btnToggleMode.Add_Click({
+    if ($script:IsTestRunning) { return }
+    if ($script:AppMode -eq "Dictionary") {
+        $script:AppMode = "Comparison"
+        $btnToggleMode.Text = "Mode: Comparison"
+        $lblMaster.Text = "Paste Typed Text Here (Required for Comparison Mode)"
+        $lblFile.Text = "Master File"
+        $script:balloonTip.SetToolTip($btnBrowse, "Browse and load a .txt master file containing the original reference paragraph.")
+    } else {
+        $script:AppMode = "Dictionary"
+        $btnToggleMode.Text = "Mode: Dictionary"
+        $lblMaster.Text = "Paste Typed Text Here (Leave blank to read from Target File)"
+        $lblFile.Text = "Target File"
+        $script:balloonTip.SetToolTip($btnBrowse, "Browse and load a .txt target file containing your typed draft.")
+    }
+    $btnToggleMode.Invalidate()
+})
+$btnToggleMode.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
+$btnToggleMode.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+$btnToggleMode.Add_Paint({
+    param($sender, $e)
+    $fill = if ($sender.Tag -eq "hover") { "#EBEBEB" } else { "#F1F5F9" }
+    Invoke-PaintRoundedCorners $sender $e 10 "#CBD5E1" $fill
+    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
+    $color = if ($script:IsTestRunning) { "#94A3B8" } else { "#005FB8" }
+    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml($color), $flags)
+})
+$pnlConfig.Controls.Add($btnToggleMode)
+$script:balloonTip.SetToolTip($btnToggleMode, "Switch between standalone Dictionary validation and Master File comparison.")
 
 $btnToggleEngine = New-Object System.Windows.Forms.Button
 $btnToggleEngine.Text = "Engine: Native"
-$btnToggleEngine.Width = 140
+$btnToggleEngine.Location = New-Object System.Drawing.Point(345, 60)
+$btnToggleEngine.Width = 130
 $btnToggleEngine.Height = 25
 $btnToggleEngine.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnToggleEngine.FlatAppearance.BorderSize = 0
@@ -845,116 +914,11 @@ $btnToggleEngine.Add_Paint({
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml($color), $flags)
 })
 $pnlConfig.Controls.Add($btnToggleEngine)
-
-$lblTime = New-Object System.Windows.Forms.Label
-$lblTime.Text = "Duration (Mins)"
-$lblTime.Location = New-Object System.Drawing.Point(20, 65)
-$lblTime.Size = New-Object System.Drawing.Size(115, 20)
-$lblTime.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$lblTime.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#334155")
-$lblTime.BackColor = [System.Drawing.Color]::White
-$pnlConfig.Controls.Add($lblTime)
-
-$txtTime = New-Object System.Windows.Forms.TextBox
-$txtTime.Text = "10"
-$txtTime.Location = New-Object System.Drawing.Point(135, 62) 
-$txtTime.Width = 60
-$txtTime.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-$pnlConfig.Controls.Add($txtTime)
-
-$btnToggleMode = New-Object System.Windows.Forms.Button
-$btnToggleMode.Text = "Mode: Dictionary"
-$btnToggleMode.Location = New-Object System.Drawing.Point(210, 60)
-$btnToggleMode.Width = 140
-$btnToggleMode.Height = 25
-$btnToggleMode.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnToggleMode.FlatAppearance.BorderSize = 0
-$btnToggleMode.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
-$btnToggleMode.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Transparent
-$btnToggleMode.BackColor = [System.Drawing.Color]::Transparent
-$btnToggleMode.Cursor = [System.Windows.Forms.Cursors]::Hand
-$btnToggleMode.Tag = "normal"
-$btnToggleMode.Add_Click({
-    if ($script:IsTestRunning) { return }
-    if ($script:AppMode -eq "Dictionary") {
-        $script:AppMode = "Comparison"
-        $btnToggleMode.Text = "Mode: Comparison"
-        $lblMaster.Text = "Paste Typed Text Here (Required for Comparison Mode)"
-        $lblFile.Text = "Master File"
-        $script:balloonTip.SetToolTip($btnBrowse, "Browse and load a .txt master file containing the original reference paragraph.")
-    } else {
-        $script:AppMode = "Dictionary"
-        $btnToggleMode.Text = "Mode: Dictionary"
-        $lblMaster.Text = "Paste Typed Text Here (Leave blank to read from Target File)"
-        $lblFile.Text = "Target File"
-        $script:balloonTip.SetToolTip($btnBrowse, "Browse and load a .txt target file containing your typed draft.")
-    }
-    $btnToggleMode.Invalidate()
-})
-$btnToggleMode.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
-$btnToggleMode.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
-$btnToggleMode.Add_Paint({
-    param($sender, $e)
-    $fill = if ($sender.Tag -eq "hover") { "#EBEBEB" } else { "#F1F5F9" }
-    Invoke-PaintRoundedCorners $sender $e 10 "#CBD5E1" $fill
-    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
-    $color = if ($script:IsTestRunning) { "#94A3B8" } else { "#005FB8" }
-    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml($color), $flags)
-})
-$pnlConfig.Controls.Add($btnToggleMode)
-
-$btnToggleUnit = New-Object System.Windows.Forms.Button
-$btnToggleUnit.Text = "Data: Words"
-$btnToggleUnit.Location = New-Object System.Drawing.Point(360, 60)
-$btnToggleUnit.Width = 110
-$btnToggleUnit.Height = 25
-$btnToggleUnit.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnToggleUnit.FlatAppearance.BorderSize = 0
-$btnToggleUnit.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
-$btnToggleUnit.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Transparent
-$btnToggleUnit.BackColor = [System.Drawing.Color]::Transparent
-$btnToggleUnit.Cursor = [System.Windows.Forms.Cursors]::Hand
-$btnToggleUnit.Tag = "normal"
-$btnToggleUnit.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
-$btnToggleUnit.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
-$btnToggleUnit.Add_Paint({
-    param($sender, $e)
-    $fill = if ($sender.Tag -eq "hover") { "#EBEBEB" } else { "#F1F5F9" }
-    Invoke-PaintRoundedCorners $sender $e 10 "#CBD5E1" $fill
-    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
-    $color = if ($script:IsTestRunning) { "#94A3B8" } else { "#005FB8" }
-    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml($color), $flags)
-})
-$pnlConfig.Controls.Add($btnToggleUnit)
-
-$btnIgnore = New-Object System.Windows.Forms.Button
-$btnIgnore.Text = "Ignore Errors"
-$btnIgnore.Location = New-Object System.Drawing.Point(480, 60)
-$btnIgnore.Width = 110
-$btnIgnore.Height = 25
-$btnIgnore.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnIgnore.FlatAppearance.BorderSize = 0
-$btnIgnore.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Transparent
-$btnIgnore.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::Transparent
-$btnIgnore.BackColor = [System.Drawing.Color]::Transparent
-$btnIgnore.Cursor = [System.Windows.Forms.Cursors]::Hand
-$btnIgnore.Tag = "normal"
-$btnIgnore.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#DC2626") 
-$btnIgnore.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
-$btnIgnore.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
-$btnIgnore.Add_Paint({
-    param($sender, $e)
-    $fill = if ($sender.Tag -eq "hover") { "#FEE2E2" } else { "#FEF2F2" } 
-    Invoke-PaintRoundedCorners $sender $e 10 "#FCA5A5" $fill
-    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
-    $color = if ($script:IsTestRunning) { [System.Drawing.ColorTranslator]::FromHtml("#94A3B8") } else { $sender.ForeColor }
-    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, $color, $flags)
-})
-$pnlConfig.Controls.Add($btnIgnore)
+$script:balloonTip.SetToolTip($btnToggleEngine, "Switch between Native Windows spellcheck and Microsoft Word dictionary engine.")
 
 $btnFreeHand = New-Object System.Windows.Forms.Button
-$btnFreeHand.Text = "Free Hand Typing"
-$btnFreeHand.Location = New-Object System.Drawing.Point(600, 60)
+$btnFreeHand.Text = "Live Test Typing"
+$btnFreeHand.Location = New-Object System.Drawing.Point(485, 60)
 $btnFreeHand.Width = 130
 $btnFreeHand.Height = 25
 $btnFreeHand.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -976,11 +940,12 @@ $btnFreeHand.Add_Paint({
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml($textCol), $flags)
 })
 $pnlConfig.Controls.Add($btnFreeHand)
+$script:balloonTip.SetToolTip($btnFreeHand, "Start a timed live typing test from scratch.")
 
 $btnDistraction = New-Object System.Windows.Forms.Button
 $btnDistraction.Text = [char]::ConvertFromUtf32(0x1F507) 
 $btnDistraction.Font = New-Object System.Drawing.Font("Segoe UI Emoji", 12) 
-$btnDistraction.Location = New-Object System.Drawing.Point(740, 55) 
+$btnDistraction.Location = New-Object System.Drawing.Point(625, 55) 
 $btnDistraction.Width = 35  
 $btnDistraction.Height = 35
 $btnDistraction.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -1022,6 +987,79 @@ $btnDistraction.Add_Paint({
     [System.Windows.Forms.TextRenderer]::DrawText($g, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#1E293B"), $flags)
 })
 $pnlConfig.Controls.Add($btnDistraction)
+$script:balloonTip.SetToolTip($btnDistraction, "Toggle examination hall background noise.")
+
+
+# Reusable Function to Display Ignore Errors CheckList Dialog
+function Invoke-IgnoreErrorsDialog {
+    if (-not $script:HasRun -or $script:CurrentErrorObjects.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("Please execute a run analysis first and ensure errors are detected before setting exclusions.", "Action Required")
+        return $false
+    }
+    
+    $dialog = New-Object System.Windows.Forms.Form
+    $dialog.Text = "Select Errors to Filter & Exclude"
+    $dialog.Size = New-Object System.Drawing.Size(600, 480)
+    $dialog.MinimumSize = New-Object System.Drawing.Size(500, 400)
+    $dialog.StartPosition = "CenterParent"
+    $dialog.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+    $dialog.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#F1F5F9")
+    $dialog.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $dialog.MaximizeBox = $false
+    $dialog.MinimizeBox = $false
+
+    $lblMsg = New-Object System.Windows.Forms.Label
+    $lblMsg.Text = "Check the specific error components you wish to ignore from compliance scores:"
+    $lblMsg.Location = New-Object System.Drawing.Point(20, 15)
+    $lblMsg.Size = New-Object System.Drawing.Size(540, 25)
+    $lblMsg.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#334155")
+    $dialog.Controls.Add($lblMsg)
+
+    $clb = New-Object System.Windows.Forms.CheckedListBox
+    $clb.Location = New-Object System.Drawing.Point(20, 50)
+    $clb.Size = New-Object System.Drawing.Size(545, 310)
+    $clb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $clb.CheckOnClick = $true
+    $clb.BackColor = [System.Drawing.Color]::White
+    $clb.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#0F172A")
+
+    for ($i = 0; $i -lt $script:CurrentErrorObjects.Count; $i++) {
+        $errNum = $i + 1
+        $displayTxt = "[$errNum] $($script:CurrentErrorObjects[$i].Text)"
+        [void]$clb.Items.Add($displayTxt)
+        if ($script:IgnoredErrorIndices -contains $errNum) { $clb.SetItemChecked($i, $true) }
+    }
+    $dialog.Controls.Add($clb)
+
+    $btnOK = New-Object System.Windows.Forms.Button
+    $btnOK.Text = "Apply Filter"
+    $btnOK.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $btnOK.Location = New-Object System.Drawing.Point(300, 385)
+    $btnOK.Size = New-Object System.Drawing.Size(150, 32)
+    $btnOK.FlatStyle = [System.Windows.Forms.FlatStyle]::System
+    $dialog.Controls.Add($btnOK)
+
+    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel.Text = "Cancel"
+    $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $btnCancel.Location = New-Object System.Drawing.Point(460, 385)
+    $btnCancel.Size = New-Object System.Drawing.Size(105, 32)
+    $btnCancel.FlatStyle = [System.Windows.Forms.FlatStyle]::System
+    $dialog.Controls.Add($btnCancel)
+
+    $dialog.AcceptButton = $btnOK
+    $dialog.CancelButton = $btnCancel
+
+    $didApply = $false
+    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $newIgnored = @()
+        for ($i = 0; $i -lt $clb.Items.Count; $i++) { if ($clb.GetItemChecked($i)) { $newIgnored += ($i + 1) } }
+        $script:IgnoredErrorIndices = $newIgnored
+        $didApply = $true
+    }
+    $dialog.Dispose()
+    return $didApply
+}
 
 # 3. Text Input Workspace Area
 $pnlMaster = New-Object System.Windows.Forms.Panel
@@ -1065,6 +1103,7 @@ $btnCopyMaster.Add_Click({
     try { if (![string]::IsNullOrWhiteSpace($txtMaster.Text)) { [System.Windows.Forms.Clipboard]::SetText($txtMaster.Text) } } catch {}
 })
 $pnlMaster.Controls.Add($btnCopyMaster)
+$script:balloonTip.SetToolTip($btnCopyMaster, "Copy text to clipboard.")
 
 $btnPasteMaster = New-Object System.Windows.Forms.Button
 $btnPasteMaster.Text = "📋"
@@ -1094,6 +1133,7 @@ $btnPasteMaster.Add_Click({
     }
 })
 $pnlMaster.Controls.Add($btnPasteMaster)
+$script:balloonTip.SetToolTip($btnPasteMaster, "Paste text from clipboard.")
 
 $btnClearMaster = New-Object System.Windows.Forms.Button
 $btnClearMaster.Text = [char]::ConvertFromUtf32(0x274C)
@@ -1123,6 +1163,7 @@ $btnClearMaster.Add_Click({
     Invoke-UpdateLayout
 })
 $pnlMaster.Controls.Add($btnClearMaster)
+$script:balloonTip.SetToolTip($btnClearMaster, "Clear all text.")
 
 $lblLiveStats = New-Object System.Windows.Forms.Label
 $lblLiveStats.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
@@ -1144,7 +1185,7 @@ $txtMaster = New-Object System.Windows.Forms.RichTextBox
 $txtMaster.Multiline = $true
 $txtMaster.ScrollBars = "Vertical"
 $txtMaster.Location = New-Object System.Drawing.Point(20, 50)
-$txtMaster.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$txtMaster.BorderStyle = [System.Windows.Forms.BorderStyle]::None # Changed to None to match premium rounded outer panel
 $txtMaster.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#FFFFFF")
 $txtMaster.Font = New-Object System.Drawing.Font("Segoe UI", 13.5)
 $txtMaster.ForeColor = [System.Drawing.Color]::Black
@@ -1183,6 +1224,7 @@ $btnCalc.Add_Paint({
     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.Color]::FromName("White"), $flags)
 })
 $form.Controls.Add($btnCalc)
+$script:balloonTip.SetToolTip($btnCalc, "Run the evaluation engine and view your scoreboard.")
 
 $btnSubmitTest = New-Object System.Windows.Forms.Button
 $btnSubmitTest.Text = "Submit Early"
@@ -1229,9 +1271,9 @@ $btnStartFreeHand.Add_Paint({
 $form.Controls.Add($btnStartFreeHand)
 
 
-# Easter Egg Control Button
+# Build MSG Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
-$lblVersion.Text = "Ver 3.6"
+$lblVersion.Text = "Build v4B"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblVersion.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#000000") 
 $lblVersion.BackColor = [System.Drawing.Color]::Transparent
@@ -1407,12 +1449,18 @@ function Invoke-ShowResultsWindow {
     $lblRes.Size = New-Object System.Drawing.Size(800, 30)
     $resForm.Controls.Add($lblRes)
 
+    # Added: Wrapping Score textbox in a painted panel for rounded corners
+    $pnlScore = New-Object System.Windows.Forms.Panel
+    $pnlScore.Add_Paint($CardPaintLayout)
+    $pnlScore.BackColor = [System.Drawing.Color]::Transparent
+    $resForm.Controls.Add($pnlScore)
+
     $txtScore = New-Object System.Windows.Forms.RichTextBox
-    $txtScore.Location = New-Object System.Drawing.Point(20, 50)
+    $txtScore.Location = New-Object System.Drawing.Point(15, 15)
     $txtScore.Font = New-Object System.Drawing.Font("Consolas", 10.5)
     $txtScore.ReadOnly = $true
     $txtScore.BackColor = [System.Drawing.Color]::White
-    $txtScore.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $txtScore.BorderStyle = [System.Windows.Forms.BorderStyle]::None # Removing borders for rounded aesthetic
     
     $txtScore.Text = Get-ScoreboardText
     
@@ -1429,7 +1477,7 @@ function Invoke-ShowResultsWindow {
     }
     & $applyBolding
     
-    $resForm.Controls.Add($txtScore)
+    $pnlScore.Controls.Add($txtScore)
 
     $lblTyped = New-Object System.Windows.Forms.Label
     $lblTyped.Text = "Your Submitted Text (Errors Highlighted):"
@@ -1438,23 +1486,39 @@ function Invoke-ShowResultsWindow {
     $lblTyped.AutoSize = $true
     $resForm.Controls.Add($lblTyped)
 
+    # Added: Wrapping Typed text textbox in a painted panel for rounded corners
+    $pnlTyped = New-Object System.Windows.Forms.Panel
+    $pnlTyped.Add_Paint($CardPaintLayout)
+    $pnlTyped.BackColor = [System.Drawing.Color]::Transparent
+    $resForm.Controls.Add($pnlTyped)
+
     $txtTyped = New-Object System.Windows.Forms.RichTextBox
+    $txtTyped.Location = New-Object System.Drawing.Point(15, 15)
     $txtTyped.Font = New-Object System.Drawing.Font("Segoe UI", 12)
     $txtTyped.ReadOnly = $true
     $txtTyped.BackColor = [System.Drawing.Color]::White
-    $txtTyped.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $txtTyped.BorderStyle = [System.Windows.Forms.BorderStyle]::None # Removing borders for rounded aesthetic
     $txtTyped.Rtf = $TypedRtf
-    $resForm.Controls.Add($txtTyped)
+    $pnlTyped.Controls.Add($txtTyped)
 
     $btnCloseRes = New-Object System.Windows.Forms.Button
-    $btnCloseRes.Text = "Close Results"
+    $btnCloseRes.Text = "Close Scoreboard"
     $btnCloseRes.Size = New-Object System.Drawing.Size(160, 35)
     $btnCloseRes.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $btnCloseRes.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#005FB8")
-    $btnCloseRes.ForeColor = [System.Drawing.Color]::White
     $btnCloseRes.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnCloseRes.FlatAppearance.BorderSize = 0
+    $btnCloseRes.BackColor = [System.Drawing.Color]::Transparent
     $btnCloseRes.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnCloseRes.Tag = "normal"
+    $btnCloseRes.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
+    $btnCloseRes.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+    $btnCloseRes.Add_Paint({
+        param($sender, $e)
+        $fill = if ($sender.Tag -eq "hover") { "#0053A0" } else { "#005FB8" }
+        Invoke-PaintRoundedCorners $sender $e 10 $null $fill
+        $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
+        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.Color]::White, $flags)
+    })
     $btnCloseRes.Add_Click({ $resForm.Close() })
     $resForm.Controls.Add($btnCloseRes)
 
@@ -1462,42 +1526,88 @@ function Invoke-ShowResultsWindow {
     $btnToggleUnitPopup.Text = if ($script:UnitMode -eq "Words") { "Switch to Strokes" } else { "Switch to Words" }
     $btnToggleUnitPopup.Size = New-Object System.Drawing.Size(160, 35)
     $btnToggleUnitPopup.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $btnToggleUnitPopup.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#F1F5F9")
-    $btnToggleUnitPopup.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#005FB8")
     $btnToggleUnitPopup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $btnToggleUnitPopup.FlatAppearance.BorderColor = [System.Drawing.ColorTranslator]::FromHtml("#005FB8")
-    $btnToggleUnitPopup.FlatAppearance.BorderSize = 1
+    $btnToggleUnitPopup.FlatAppearance.BorderSize = 0
+    $btnToggleUnitPopup.BackColor = [System.Drawing.Color]::Transparent
     $btnToggleUnitPopup.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnToggleUnitPopup.Tag = "normal"
+    $btnToggleUnitPopup.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
+    $btnToggleUnitPopup.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+    $btnToggleUnitPopup.Add_Paint({
+        param($sender, $e)
+        $fill = if ($sender.Tag -eq "hover") { "#EBEBEB" } else { "#F1F5F9" }
+        Invoke-PaintRoundedCorners $sender $e 10 "#005FB8" $fill
+        $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
+        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#005FB8"), $flags)
+    })
     $btnToggleUnitPopup.Add_Click({
         if ($script:UnitMode -eq "Strokes") {
             $script:UnitMode = "Words"
             $btnToggleUnitPopup.Text = "Switch to Strokes"
-            $btnToggleUnit.Text = "Data: Words"
         } else {
             $script:UnitMode = "Strokes"
             $btnToggleUnitPopup.Text = "Switch to Words"
-            $btnToggleUnit.Text = "Data: Strokes"
         }
-        $btnToggleUnit.Invalidate()
         $txtScore.Text = Get-ScoreboardText
         & $applyBolding
     })
     $resForm.Controls.Add($btnToggleUnitPopup)
 
+    $btnIgnorePopup = New-Object System.Windows.Forms.Button
+    $btnIgnorePopup.Text = "Filter Errors"
+    $btnIgnorePopup.Size = New-Object System.Drawing.Size(140, 35)
+    $btnIgnorePopup.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnIgnorePopup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnIgnorePopup.FlatAppearance.BorderSize = 0
+    $btnIgnorePopup.BackColor = [System.Drawing.Color]::Transparent
+    $btnIgnorePopup.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnIgnorePopup.Tag = "normal"
+    $btnIgnorePopup.Add_MouseEnter({ $this.Tag = "hover"; $this.Invalidate() })
+    $btnIgnorePopup.Add_MouseLeave({ $this.Tag = "normal"; $this.Invalidate() })
+    $btnIgnorePopup.Add_Paint({
+        param($sender, $e)
+        $fill = if ($sender.Tag -eq "hover") { "#FEE2E2" } else { "#FEF2F2" }
+        Invoke-PaintRoundedCorners $sender $e 10 "#FCA5A5" $fill
+        $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
+        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $sender.Text, $sender.Font, $sender.ClientRectangle, [System.Drawing.ColorTranslator]::FromHtml("#DC2626"), $flags)
+    })
+    $btnIgnorePopup.Add_Click({
+		if ($script:CurrentErrorObjects.Count -eq 0) {
+			[System.Windows.Forms.MessageBox]::Show("No Errors Found.", "Filter Status", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+			return
+		}
+		if (Invoke-IgnoreErrorsDialog) {
+			$txtScore.Text = Get-ScoreboardText
+			& $applyBolding
+			Invoke-HighlightTextBoxErrors
+			$txtTyped.Rtf = $txtMaster.Rtf
+		}
+	})
+    $resForm.Controls.Add($btnIgnorePopup)
+
     $resForm_ResizeLogic = {
-        $txtScore.Width = $resForm.ClientSize.Width - 40
-        $txtTyped.Width = $resForm.ClientSize.Width - 40
+        $pnlScore.Width = $resForm.ClientSize.Width - 40
+        $pnlTyped.Width = $resForm.ClientSize.Width - 40
         
-        $txtScore.Height = [int]($resForm.ClientSize.Height * 0.45)
+        $pnlScore.Top = 50
+        $pnlScore.Left = 20
+        $pnlScore.Height = [int]($resForm.ClientSize.Height * 0.45)
         
-        $lblTyped.Top = $txtScore.Bottom + 15
+        $txtScore.Width = $pnlScore.Width - 30
+        $txtScore.Height = $pnlScore.Height - 30
+        
+        $lblTyped.Top = $pnlScore.Bottom + 15
         $lblTyped.Left = 20
         
-        $txtTyped.Top = $lblTyped.Bottom + 8
-        $txtTyped.Height = $resForm.ClientSize.Height - $txtTyped.Top - 65
-        $txtTyped.Left = 20
+        $pnlTyped.Top = $lblTyped.Bottom + 8
+        $pnlTyped.Left = 20
+        $pnlTyped.Height = $resForm.ClientSize.Height - $pnlTyped.Top - 65
+
+        $txtTyped.Width = $pnlTyped.Width - 30
+        $txtTyped.Height = $pnlTyped.Height - 30
         
-        $totalWidth = $btnCloseRes.Width + 15 + $btnToggleUnitPopup.Width
+        # Recalculate centering for all 3 unified buttons
+        $totalWidth = $btnCloseRes.Width + 15 + $btnToggleUnitPopup.Width + 15 + $btnIgnorePopup.Width
         $startX = ($resForm.ClientSize.Width - $totalWidth) / 2
 
         $btnCloseRes.Top = $resForm.ClientSize.Height - 50
@@ -1505,6 +1615,9 @@ function Invoke-ShowResultsWindow {
 
         $btnToggleUnitPopup.Top = $resForm.ClientSize.Height - 50
         $btnToggleUnitPopup.Left = $btnCloseRes.Right + 15
+        
+        $btnIgnorePopup.Top = $resForm.ClientSize.Height - 50
+        $btnIgnorePopup.Left = $btnToggleUnitPopup.Right + 15
     }
 
     $resForm.Add_Resize($resForm_ResizeLogic)
@@ -1627,7 +1740,37 @@ function Invoke-EndFreeHandTest {
     $btnFreeHand.Invalidate()
 
     Invoke-HighlightTextBoxErrors
+    
+    # 1. Show the scoreboard window (Pauses here until closed)
     Invoke-ShowResultsWindow -TypedRtf $txtMaster.Rtf
+
+    # 2. AUTO-EXIT LIVE TYPING MODE AFTER USER CLOSES SCOREBOARD
+    $LiveTimer.Stop()
+    $script:IsFreeHandActive = $false
+    $script:IsTestRunning = $false
+    
+    $pnlConfig.Invalidate($true)
+    $btnFreeHand.Invalidate()
+    $lblMaster.Visible = $true
+    
+    $btnCopyMaster.Visible = $true
+    $btnPasteMaster.Visible = $true
+    $btnClearMaster.Visible = $true
+    
+    $lblLiveStats.Visible = $false
+    $lblTimerDisplay.Visible = $false
+    
+    # Reset Bottom Action Buttons back to standard mode
+    $btnStartFreeHand.Visible = $false
+    $btnSubmitTest.Visible = $false
+    $btnCalc.Visible = $true
+    
+    # Allow editing in normal mode and PRESERVE the typed text
+    $txtMaster.ReadOnly = $false 
+    # $txtMaster.Text = ""  <-- REMOVED OR COMMENTED OUT TO KEEP THE TEXT IN WINDOW
+    
+    Invoke-UpdateLayout
+    $pnlMaster.Refresh()
 }
 
 $LiveTimer.Add_Tick({
@@ -1645,13 +1788,13 @@ $LiveTimer.Add_Tick({
         }
     } else {
         if ($script:FreeHandSecondsLeft -gt 0) { $script:FreeHandSecondsLeft--; Invoke-UpdateLiveStats } else {
-            $LiveTimer.Stop(); [System.Windows.Forms.MessageBox]::Show("Time is up! Processing your metrics now.", "Session Finished")
+            $LiveTimer.Stop()
             Invoke-EndFreeHandTest
         }
     }
 })
 
-$btnSubmitTest.Add_Click({ if ($script:IsTestRunning) { [System.Windows.Forms.MessageBox]::Show("Test manually submitted early. Processing exact elapsed time metrics...", "Early Submission"); Invoke-EndFreeHandTest } })
+$btnSubmitTest.Add_Click({ if ($script:IsTestRunning) { Invoke-EndFreeHandTest } })
 
 $btnFreeHand.Add_Click({
     if ($script:IsFreeHandActive) {
@@ -1706,7 +1849,7 @@ $btnFreeHand.Add_Click({
     $btnSubmitTest.Visible = $false
     $btnCalc.Visible = $false
     
-    $lblTimerDisplay.Text = "WAITING"
+    $lblTimerDisplay.Text = "Ready"
     $lblLiveStats.Text = "Strokes: 0  |  Speed: 0.0 WPM  |  Backspaces: 0"
     
     Invoke-UpdateLayout
@@ -1817,8 +1960,7 @@ function Invoke-UpdateLayout {
         $pnlMaster.Left = 30; $pnlMaster.Width = $newW
 
         $btnBrowse.Left = $pnlConfig.Width - $btnBrowse.Width - 15
-        $btnToggleEngine.Left = $btnBrowse.Left - $btnToggleEngine.Width - 15; $btnToggleEngine.Top = 20
-        $txtPath.Width = $btnToggleEngine.Left - $txtPath.Left - 15
+        $txtPath.Width = $btnBrowse.Left - $txtPath.Left - 15
         
         # Maximize the main typing window completely with a comfortable 120px clearance buffer
         $remainingHeight = $form.ClientSize.Height - $pnlMaster.Top - 120 
@@ -1884,52 +2026,6 @@ function Invoke-UpdateLayout {
         if ($script:HasRun) { Invoke-HighlightTextBoxErrors }
     }
 }
-
-$btnToggleUnit.Add_Click({
-    if ($script:IsTestRunning) { return }
-    if ($script:UnitMode -eq "Strokes") { $script:UnitMode = "Words"; $btnToggleUnit.Text = "Data: Words" } else { $script:UnitMode = "Strokes"; $btnToggleUnit.Text = "Data: Strokes" }
-    $btnToggleUnit.Invalidate()
-})
-
-$btnIgnore.Add_Click({
-    if ($script:IsTestRunning) { return }
-    if (-not $script:HasRun -or $script:CurrentErrorObjects.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("Please execute a run analysis first and ensure errors are detected before setting exclusions.", "Action Required"); return }
-    
-    $dialog = New-Object System.Windows.Forms.Form
-    $dialog.Text = "Select System Errors to Exclude"; $dialog.Size = New-Object System.Drawing.Size(600, 480); $dialog.MinimumSize = New-Object System.Drawing.Size(500, 400); $dialog.StartPosition = "CenterParent"; $dialog.Font = New-Object System.Drawing.Font("Segoe UI", 9.5); $dialog.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#F1F5F9"); $dialog.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog; $dialog.MaximizeBox = $false; $dialog.MinimizeBox = $false
-
-    $lblMsg = New-Object System.Windows.Forms.Label
-    $lblMsg.Text = "Check the specific error components you wish to ignore from compliance scores:"; $lblMsg.Location = New-Object System.Drawing.Point(20, 15); $lblMsg.Size = New-Object System.Drawing.Size(540, 25); $lblMsg.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#334155")
-    $dialog.Controls.Add($lblMsg)
-
-    $clb = New-Object System.Windows.Forms.CheckedListBox
-    $clb.Location = New-Object System.Drawing.Point(20, 50); $clb.Size = New-Object System.Drawing.Size(545, 310); $clb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle; $clb.CheckOnClick = $true; $clb.BackColor = [System.Drawing.Color]::White; $clb.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#0F172A")
-
-    for ($i = 0; $i -lt $script:CurrentErrorObjects.Count; $i++) {
-        $errNum = $i + 1; $displayTxt = "[$errNum] $($script:CurrentErrorObjects[$i].Text)"; [void]$clb.Items.Add($displayTxt)
-        if ($script:IgnoredErrorIndices -contains $errNum) { $clb.SetItemChecked($i, $true) }
-    }
-    $dialog.Controls.Add($clb)
-
-    $btnOK = New-Object System.Windows.Forms.Button
-    $btnOK.Text = "Apply Exclusions"; $btnOK.DialogResult = [System.Windows.Forms.DialogResult]::OK; $btnOK.Location = New-Object System.Drawing.Point(300, 385); $btnOK.Size = New-Object System.Drawing.Size(150, 32); $btnOK.FlatStyle = [System.Windows.Forms.FlatStyle]::System
-    $dialog.Controls.Add($btnOK)
-
-    $btnCancel = New-Object System.Windows.Forms.Button
-    $btnCancel.Text = "Cancel"; $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel; $btnCancel.Location = New-Object System.Drawing.Point(460, 385); $btnCancel.Size = New-Object System.Drawing.Size(105, 32); $btnCancel.FlatStyle = [System.Windows.Forms.FlatStyle]::System
-    $dialog.Controls.Add($btnCancel)
-
-    $dialog.AcceptButton = $btnOK; $dialog.CancelButton = $btnCancel
-
-    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $newIgnored = @()
-        for ($i = 0; $i -lt $clb.Items.Count; $i++) { if ($clb.GetItemChecked($i)) { $newIgnored += ($i + 1) } }
-        $script:IgnoredErrorIndices = $newIgnored
-        Invoke-HighlightTextBoxErrors
-        Invoke-ShowResultsWindow -TypedRtf $txtMaster.Rtf
-    }
-    $dialog.Dispose()
-})
 
 # Boot up logic mapping
 $form.Add_Resize({ Invoke-UpdateLayout; $form.Invalidate($true) })
