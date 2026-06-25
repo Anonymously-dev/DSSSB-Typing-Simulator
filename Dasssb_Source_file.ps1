@@ -1,7 +1,7 @@
 # DSSSB LDC Typing Evaluation Simulator
 # Author: Verma_Ji
 # Description: A GUI-based typing test evaluator that calculates strokes, WPM, and errors.
-# versionNo. 4B
+# versionNo. 4B.1
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -445,6 +445,14 @@ function Run-StandaloneEngine {
             [System.Windows.Forms.Application]::DoEvents()
             $rawWord = $match.Value
             
+            # --- NEW CONDITION: Check if the very first letter of the typed passage is lowercase ---
+            if ($match.Index -eq $wordMatches[0].Index -and [char]::IsLower($rawWord[0])) {
+                [void]$errorList.Add([PSCustomObject]@{ 
+                    Type = "Capitalization"; Text = "Passage Start Error: First letter of passage must be capitalized ('$rawWord')"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
+                })
+                continue # Skip further dictionary checks for this word to avoid double penalty
+            }
+            
             if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) { continue }
             
             $word = $rawWord -replace "^[^a-zA-Z0-9]+", "" -replace "[^a-zA-Z0-9]+$", ""
@@ -520,6 +528,15 @@ function Run-StandaloneEngine {
             foreach ($match in $wordMatches) {
                 [System.Windows.Forms.Application]::DoEvents()
                 $rawWord = $match.Value
+                
+                # --- NEW CONDITION: Check if the very first letter of the typed passage is lowercase ---
+                if ($match.Index -eq $wordMatches[0].Index -and [char]::IsLower($rawWord[0])) {
+                    [void]$errorList.Add([PSCustomObject]@{ 
+                        Type = "Capitalization"; Text = "Passage Start Error: First letter of passage must be capitalized ('$rawWord')"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
+                    })
+                    continue # Skip further dictionary checks for this word to avoid double penalty
+                }
+
                 if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) { continue }
                 $word = $rawWord -replace "^[^a-zA-Z0-9]+", "" -replace "[^a-zA-Z0-9]+$", ""
                 $word = $word.TrimEnd('.')
@@ -570,7 +587,7 @@ function Run-StandaloneEngine {
         $itemsToRemove = New-Object System.Collections.ArrayList
         foreach ($err in $errorList) {
             if ($err.Index -lt $endIdx -and ($err.Index + $err.Length) -gt $startIdx) {
-                if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar" -or $err.Type -eq "Space") { [void]$itemsToRemove.Add($err) }
+                if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar" -or $err.Type -eq "Space" -or $err.Type -eq "Capitalization") { [void]$itemsToRemove.Add($err) }
             }
         }
         foreach ($item in $itemsToRemove) { $errorList.Remove($item) }
@@ -581,7 +598,6 @@ function Run-StandaloneEngine {
 
     # FIX 1: Missing space after punctuation check
     foreach ($match in [regex]::Matches($TextData, "([.,!?;/:]+)([a-zA-Z0-9]+)")) {
-        # Correctly targeting specific capture groups [1] and [2]
         $punc = $match.Groups[1].Value; $targetWord = $match.Groups[2].Value; $startIdx = $match.Index
         while ($startIdx -gt 0 -and -not [char]::IsWhiteSpace($TextData[$startIdx - 1])) { $startIdx-- }
         $endIdx = $match.Index + $match.Length
@@ -599,7 +615,7 @@ function Run-StandaloneEngine {
             $itemsToRemove = New-Object System.Collections.ArrayList
             foreach ($err in $errorList) {
                 if ($err.Index -lt $endIdx -and ($err.Index + $err.Length) -gt $startIdx) {
-                    if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar") { [void]$itemsToRemove.Add($err) }
+                    if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar" -or $err.Type -eq "Capitalization") { [void]$itemsToRemove.Add($err) }
                 }
             }
             foreach ($item in $itemsToRemove) { $errorList.Remove($item) }
@@ -611,12 +627,11 @@ function Run-StandaloneEngine {
 
     # FIX 2: Capitalization check
     foreach ($match in [regex]::Matches($TextData, "([.]\s+)([a-z][a-zA-Z0-9'-]*)")) {
-        # Correctly targeting specific capture group [2]
         $targetWord = $match.Groups[2].Value; $wordIdx = $match.Groups[2].Index; $wordLen = $match.Groups[2].Length
         $itemsToRemove = New-Object System.Collections.ArrayList
         foreach ($err in $errorList) {
             if ($err.Index -ge $wordIdx -and ($err.Index + $err.Length) -le ($wordIdx + $wordLen)) {
-                if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar") { [void]$itemsToRemove.Add($err) }
+                if ($err.Type -eq "Typo" -or $err.Type -eq "Grammar" -or $err.Type -eq "Capitalization") { [void]$itemsToRemove.Add($err) }
             }
         }
         foreach ($item in $itemsToRemove) { $errorList.Remove($item) }
@@ -1273,7 +1288,7 @@ $form.Controls.Add($btnStartFreeHand)
 
 # Build MSG Control Button
 $lblVersion = New-Object System.Windows.Forms.Label
-$lblVersion.Text = "Build v4 BETA"
+$lblVersion.Text = "Build v4.1 BETA"
 $lblVersion.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblVersion.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#000000") 
 $lblVersion.BackColor = [System.Drawing.Color]::Transparent
