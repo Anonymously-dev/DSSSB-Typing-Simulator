@@ -445,12 +445,12 @@ function Run-StandaloneEngine {
             [System.Windows.Forms.Application]::DoEvents()
             $rawWord = $match.Value
             
-            # --- NEW CONDITION: Check if the very first letter of the typed passage is lowercase ---
+            # Check if the very first letter of the typed passage is lowercase
             if ($match.Index -eq $wordMatches[0].Index -and [char]::IsLower($rawWord[0])) {
                 [void]$errorList.Add([PSCustomObject]@{ 
                     Type = "Capitalization"; Text = "Passage Start Error: First letter of passage must be capitalized ('$rawWord')"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
                 })
-                continue # Skip further dictionary checks for this word to avoid double penalty
+                continue 
             }
             
             if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) { continue }
@@ -529,12 +529,12 @@ function Run-StandaloneEngine {
                 [System.Windows.Forms.Application]::DoEvents()
                 $rawWord = $match.Value
                 
-                # --- NEW CONDITION: Check if the very first letter of the typed passage is lowercase ---
+                # Check if the very first letter of the typed passage is lowercase
                 if ($match.Index -eq $wordMatches[0].Index -and [char]::IsLower($rawWord[0])) {
                     [void]$errorList.Add([PSCustomObject]@{ 
                         Type = "Capitalization"; Text = "Passage Start Error: First letter of passage must be capitalized ('$rawWord')"; StrokePen = 5; WordPen = 1; DisplayErrorCount = 5; Index = $match.Index; Length = $match.Length
                     })
-                    continue # Skip further dictionary checks for this word to avoid double penalty
+                    continue 
                 }
 
                 if (($rawWord -match "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") -or ($rawWord -match "^(www\.|https?://)")) { continue }
@@ -596,8 +596,8 @@ function Run-StandaloneEngine {
         })
     }
 
-    # FIX 1: Missing space after punctuation check
-    foreach ($match in [regex]::Matches($TextData, "([.,!?;/:]+)([a-zA-Z0-9]+)")) {
+    # FIX 1: Missing space after punctuation check (UPDATED: Now detects missing spaces followed by quotes or brackets)
+    foreach ($match in [regex]::Matches($TextData, "([.,!?;/:\)\]]+)([""'“”‘’\(\[]*[a-zA-Z0-9]+)")) {
         $punc = $match.Groups[1].Value; $targetWord = $match.Groups[2].Value; $startIdx = $match.Index
         while ($startIdx -gt 0 -and -not [char]::IsWhiteSpace($TextData[$startIdx - 1])) { $startIdx-- }
         $endIdx = $match.Index + $match.Length
