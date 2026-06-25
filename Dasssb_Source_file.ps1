@@ -745,7 +745,7 @@ $form.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#E2E8F0")
 $form.Add_FormClosing($form_FormClosing)
 
 $lblHeader = New-Object System.Windows.Forms.Label
-$lblHeader.Text = "DSSSB Evaluation Engine"
+$lblHeader.Text = "DSSSB Typing Evaluator"
 $lblHeader.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 18)
 $lblHeader.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#0F172A")
 $lblHeader.Size = New-Object System.Drawing.Size(2000, 40) 
